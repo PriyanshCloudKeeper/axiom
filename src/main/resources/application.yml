@@ -1,0 +1,47 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: scim-keycloak-bridge
+  
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI}
+
+logging:
+  level:
+    com.learnhai.scim: DEBUG  # Set your desired level (DEBUG, INFO, etc.)
+    org.springframework.security: INFO # Or DEBUG
+    org.springframework.web: INFO     # Or DEBUG
+    org.keycloak.admin.client: INFO
+
+keycloak:
+  server-url: ${KEYCLOAK_SERVER_URL:http://localhost:8080}
+  realm: ${KEYCLOAK_REALM:master}
+  client-id: ${KEYCLOAK_CLIENT_ID:scim-bridge-client}
+  client-secret: ${KEYCLOAK_CLIENT_SECRET}
+  target-realm: ${KEYCLOAK_TARGET_REALM:myrealm}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+# SCIM Configuration
+scim:
+  base-url: ${SCIM_BASE_URL:http://localhost:8080}
+  resource-types:
+    - User
+    - Group
+  schemas:
+    user: urn:ietf:params:scim:schemas:core:2.0:User
+    group: urn:ietf:params:scim:schemas:core:2.0:Group
