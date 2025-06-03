@@ -1,6 +1,7 @@
 package com.learnhai.scim.mapper;
 
 import com.learnhai.scim.model.scim.ScimGroup;
+import com.learnhai.scim.model.scim.ScimUser;
 import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.UserRepresentation; // For mapping members
 import org.springframework.beans.factory.annotation.Value;
