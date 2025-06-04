@@ -20,7 +20,7 @@
 
     <properties>
         <java.version>17</java.version>
-        <keycloak.version>22.0.5</keycloak.version> <!-- Check for latest compatible Keycloak admin client -->
+        <keycloak.version>26.1.4</keycloak.version> <!-- Check for latest compatible Keycloak admin client -->
     </properties>
 
     <dependencies>
@@ -50,7 +50,7 @@
         <dependency>
             <groupId>org.keycloak</groupId>
             <artifactId>keycloak-admin-client</artifactId>
-            <version>${keycloak.version}</version>
+            <version>26.0.5</version>
         </dependency>
 
         <!-- JAX-RS API - often needed by Keycloak Admin Client transitively but good to have explicitly -->
