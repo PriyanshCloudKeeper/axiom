@@ -9,20 +9,20 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.apache.commons.lang3.StringUtils;
-
+import lombok.extern.slf4j.Slf4j; // Correctly added import
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Set;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.HashMap; // Added for response map
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j // Annotation for logging
 public class ScimGroupService {
 
     private final KeycloakService keycloakService;
@@ -35,40 +35,48 @@ public class ScimGroupService {
     }
 
     public ScimGroup createGroup(ScimGroup scimGroup) {
-         // Check for conflicts by displayName (Keycloak group name)
         if (StringUtils.isNotBlank(scimGroup.getDisplayName())) {
             keycloakService.getGroupByName(scimGroup.getDisplayName()).ifPresent(existing -> {
+                log.warn("Conflict: Group with name '{}' already exists.", scimGroup.getDisplayName());
                 throw new ScimException("Group with name '" + scimGroup.getDisplayName() + "' already exists.", HttpStatus.CONFLICT, "uniqueness");
             });
         }
 
         GroupRepresentation kcGroupToCreate = groupMapper.toKeycloakGroup(scimGroup, null);
         String groupId = keycloakService.createGroup(kcGroupToCreate);
+        log.info("Successfully created group in Keycloak with ID: {}", groupId);
 
-        // Add members if provided
+
         if (scimGroup.getMembers() != null && !scimGroup.getMembers().isEmpty()) {
+            log.info("Processing {} members provided for new group {}", scimGroup.getMembers().size(), groupId);
             for (ScimGroup.Member member : scimGroup.getMembers()) {
                 if ("User".equalsIgnoreCase(member.getType()) && StringUtils.isNotBlank(member.getValue())) {
-                    // Ensure user exists before adding
+                    log.info("Attempting to add user member ID {} to new group {}", member.getValue(), groupId);
                     keycloakService.getUserById(member.getValue())
-                        .orElseThrow(() -> new ScimException("User member with ID " + member.getValue() + " not found.", HttpStatus.BAD_REQUEST, "invalidValue"));
+                        .orElseThrow(() -> {
+                            log.error("User member with ID {} not found during group creation.", member.getValue());
+                            return new ScimException("User member with ID " + member.getValue() + " not found.", HttpStatus.BAD_REQUEST, "invalidValue");
+                        });
                     keycloakService.addUserToGroup(member.getValue(), groupId);
                 }
-                // TODO: Handle member.type == "Group" (group nesting) if supported
             }
         }
 
         GroupRepresentation createdKcGroup = keycloakService.getGroupById(groupId)
-                .orElseThrow(() -> new ScimException("Failed to retrieve created group: " + groupId, HttpStatus.INTERNAL_SERVER_ERROR));
+                .orElseThrow(() -> {
+                    log.error("Critical error: Failed to retrieve just-created group with ID: {}", groupId);
+                    return new ScimException("Failed to retrieve created group: " + groupId, HttpStatus.INTERNAL_SERVER_ERROR);
+                });
         
-        List<UserRepresentation> members = keycloakService.getGroupMembers(groupId, 0, 200); // Default page for members
+        List<UserRepresentation> members = keycloakService.getGroupMembers(groupId, 0, 200);
+        log.info("Fetched {} members for newly created group {}", members.size(), groupId);
         return groupMapper.toScimGroup(createdKcGroup, members);
     }
 
     public Optional<ScimGroup> getGroupById(String id) {
         return keycloakService.getGroupById(id)
                 .map(kcGroup -> {
-                    List<UserRepresentation> members = keycloakService.getGroupMembers(id, 0, 200); // Adjust pagination as needed
+                    List<UserRepresentation> members = keycloakService.getGroupMembers(id, 0, 200);
                     return groupMapper.toScimGroup(kcGroup, members);
                 });
     }
@@ -77,10 +85,10 @@ public class ScimGroupService {
         GroupRepresentation existingKcGroup = keycloakService.getGroupById(id)
                 .orElseThrow(() -> new ScimException("Group not found with id: " + id, HttpStatus.NOT_FOUND));
 
-        // Check for displayName conflict if it's being changed
         if (StringUtils.isNotBlank(scimGroup.getDisplayName()) && !scimGroup.getDisplayName().equals(existingKcGroup.getName())) {
             keycloakService.getGroupByName(scimGroup.getDisplayName()).ifPresent(conflictingGroup -> {
-                 if (!conflictingGroup.getId().equals(id)) { // Ensure it's not the same group
+                 if (!conflictingGroup.getId().equals(id)) {
+                    log.warn("Conflict on replaceGroup: Group name '{}' is already taken by another group (ID: {}).", scimGroup.getDisplayName(), conflictingGroup.getId());
                     throw new ScimException("Group name '" + scimGroup.getDisplayName() + "' is already taken.", HttpStatus.CONFLICT, "uniqueness");
                 }
             });
@@ -88,16 +96,12 @@ public class ScimGroupService {
 
         GroupRepresentation kcGroupToUpdate = groupMapper.toKeycloakGroup(scimGroup, existingKcGroup);
         keycloakService.updateGroup(id, kcGroupToUpdate);
+        log.info("Successfully updated group attributes for ID: {}", id);
 
-        // Full replacement of members:
-        // 1. Get current members from Keycloak.
-        // 2. Get desired members from scimGroup.
-        // 3. Remove members present in Keycloak but not in scimGroup.
-        // 4. Add members present in scimGroup but not in Keycloak.
-        // This is a simplified version: remove all, then add all from request.
-        // More efficient would be to diff.
-        List<UserRepresentation> currentMembers = keycloakService.getGroupMembers(id, 0, Integer.MAX_VALUE); // Get all members
+
+        List<UserRepresentation> currentMembers = keycloakService.getGroupMembers(id, 0, Integer.MAX_VALUE);
         Set<String> currentMemberIds = currentMembers.stream().map(UserRepresentation::getId).collect(Collectors.toSet());
+        log.info("ReplaceGroup ID: {}: Current members in Keycloak: {}", id, currentMemberIds.size());
         
         Set<String> desiredMemberIds = new HashSet<>();
         if (scimGroup.getMembers() != null) {
@@ -106,18 +110,23 @@ public class ScimGroupService {
                 .map(ScimGroup.Member::getValue)
                 .collect(Collectors.toSet());
         }
+        log.info("ReplaceGroup ID: {}: Desired members from SCIM request: {}", id, desiredMemberIds.size());
 
-        // Remove users no longer in the group
+
         for (String memberId : currentMemberIds) {
             if (!desiredMemberIds.contains(memberId)) {
+                log.info("ReplaceGroup ID: {}: Removing member {} (not in desired set)", id, memberId);
                 keycloakService.removeUserFromGroup(memberId, id);
             }
         }
-        // Add new users to the group
         for (String memberId : desiredMemberIds) {
             if (!currentMemberIds.contains(memberId)) {
-                 keycloakService.getUserById(memberId) // Ensure user exists
-                        .orElseThrow(() -> new ScimException("User member with ID " + memberId + " not found for group update.", HttpStatus.BAD_REQUEST, "invalidValue"));
+                 keycloakService.getUserById(memberId)
+                        .orElseThrow(() -> {
+                            log.error("ReplaceGroup ID: {}: User member with ID {} not found for adding to group.",id, memberId);
+                            return new ScimException("User member with ID " + memberId + " not found for group update.", HttpStatus.BAD_REQUEST, "invalidValue");
+                        });
+                log.info("ReplaceGroup ID: {}: Adding member {} (not in current set)", id, memberId);
                 keycloakService.addUserToGroup(memberId, id);
             }
         }
@@ -125,6 +134,7 @@ public class ScimGroupService {
         GroupRepresentation updatedKcGroup = keycloakService.getGroupById(id)
                 .orElseThrow(() -> new ScimException("Failed to retrieve updated group: " + id, HttpStatus.INTERNAL_SERVER_ERROR));
         List<UserRepresentation> finalMembers = keycloakService.getGroupMembers(id, 0, 200);
+        log.info("ReplaceGroup ID: {}: Final fetched members for response: {}", id, finalMembers.size());
         return groupMapper.toScimGroup(updatedKcGroup, finalMembers);
     }
 
@@ -132,18 +142,19 @@ public class ScimGroupService {
         GroupRepresentation existingKcGroup = keycloakService.getGroupById(id)
                 .orElseThrow(() -> new ScimException("Group not found with id: " + id, HttpStatus.NOT_FOUND));
 
-        // TODO: Implement SCIM Patch Operations for Groups (RFC 7644, Section 3.5.2)
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> operations = (List<Map<String, Object>>) patchRequest.get("Operations");
         if (operations == null || operations.isEmpty()) {
             throw new ScimException("Patch request must contain 'Operations'.", HttpStatus.BAD_REQUEST, "invalidSyntax");
         }
 
-        boolean groupModified = false;
+        boolean groupAttributesModified = false; 
         for (Map<String, Object> operation : operations) {
             String op = (String) operation.get("op");
-            String path = (String) operation.get("path"); // e.g., "displayName", "members"
+            String path = (String) operation.get("path");
             Object value = operation.get("value");
+            log.info("PATCH GROUP ID: {}, Processing op: '{}', path: '{}'", id, op, path);
+
 
             if ("replace".equalsIgnoreCase(op)) {
                 if ("displayName".equalsIgnoreCase(path)) {
@@ -152,17 +163,20 @@ public class ScimGroupService {
                         if(!newDisplayName.equals(existingKcGroup.getName())) {
                             keycloakService.getGroupByName(newDisplayName).ifPresent(conflictingGroup -> {
                                 if (!conflictingGroup.getId().equals(id)) {
+                                    log.warn("Conflict on patchGroup: Group name '{}' is already taken by another group (ID: {}).", newDisplayName, conflictingGroup.getId());
                                     throw new ScimException("Group name '" + newDisplayName + "' is already taken.", HttpStatus.CONFLICT, "uniqueness");
                                 }
                             });
                             existingKcGroup.setName(newDisplayName);
-                            groupModified = true;
+                            groupAttributesModified = true;
+                            log.info("PATCH GROUP ID: {}: displayName changed to '{}'. groupAttributesModified=true", id, newDisplayName);
+                        } else {
+                             log.info("PATCH GROUP ID: {}: displayName value is already '{}'. No change needed.", id, newDisplayName);
                         }
                     } else {
                         throw new ScimException("Invalid value for 'displayName'. Non-empty String expected.", HttpStatus.BAD_REQUEST, "invalidValue");
                     }
                 }
-                // TODO: Handle "replace" for "members" (full replacement)
             } else if ("add".equalsIgnoreCase(op)) {
                 if ("members".equalsIgnoreCase(path)) {
                     if (value instanceof List) {
@@ -170,12 +184,20 @@ public class ScimGroupService {
                         List<Map<String, Object>> membersToAdd = (List<Map<String, Object>>) value;
                         for (Map<String, Object> memberMap : membersToAdd) {
                             String memberValue = (String) memberMap.get("value");
-                            String memberType = (String) memberMap.get("type"); // Should be "User" typically
+                            String memberType = (String) memberMap.get("type");
                             if ("User".equalsIgnoreCase(memberType) && StringUtils.isNotBlank(memberValue)) {
-                                keycloakService.getUserById(memberValue) // Ensure user exists
-                                    .orElseThrow(() -> new ScimException("User member with ID " + memberValue + " not found for patch add.", HttpStatus.BAD_REQUEST, "invalidValue"));
-                                keycloakService.addUserToGroup(memberValue, id);
-                                // No need to set groupModified = true for members, Keycloak handles this
+                                log.info("PATCH GROUP ID: {}: Attempting to add user member ID '{}'", id, memberValue);
+                                try {
+                                    keycloakService.getUserById(memberValue)
+                                        .orElseThrow(() -> {
+                                            log.error("PATCH GROUP ID: {}: User member with ID {} not found for add operation.",id, memberValue);
+                                            return new ScimException("User member with ID " + memberValue + " not found for patch add.", HttpStatus.BAD_REQUEST, "invalidValue");
+                                        });
+                                    keycloakService.addUserToGroup(memberValue, id);
+                                } catch (Exception e) {
+                                    log.error("PATCH GROUP ID: {}: Error adding user {} to group: {}", id, memberValue, e.getMessage(), e);
+                                    throw new ScimException("Failed to add member " + memberValue + " to group " + id, HttpStatus.INTERNAL_SERVER_ERROR, e);
+                                }
                             }
                         }
                     } else {
@@ -183,25 +205,32 @@ public class ScimGroupService {
                     }
                 }
             } else if ("remove".equalsIgnoreCase(op)) {
-                 // Path for remove could be "members[value eq \"userId\"]" or just "members" with a list in value.
-                 // SCIM spec is a bit flexible here. Simplified: remove by value if path is "members"
                 if (path != null && path.toLowerCase().startsWith("members[value eq ")) {
                     String userIdToRemove = path.substring(path.toLowerCase().indexOf("\"") + 1, path.toLowerCase().lastIndexOf("\""));
                      if (StringUtils.isNotBlank(userIdToRemove)) {
-                        keycloakService.removeUserFromGroup(userIdToRemove, id);
+                        log.info("PATCH GROUP ID: {}: Attempting to remove user member ID '{}'", id, userIdToRemove);
+                        try {
+                            keycloakService.removeUserFromGroup(userIdToRemove, id);
+                        } catch (Exception e) {
+                            log.error("PATCH GROUP ID: {}: Error removing user {} from group: {}", id, userIdToRemove, e.getMessage(), e);
+                            throw new ScimException("Failed to remove member " + userIdToRemove + " from group " + id, HttpStatus.INTERNAL_SERVER_ERROR, e);
+                        }
                     }
                 }
-                // TODO: Handle more complex remove operations for members
             }
         }
 
-        if (groupModified) {
+        if (groupAttributesModified) {
+            log.info("PATCH GROUP ID: {}: displayName was modified, calling keycloakService.updateGroup.", id);
             keycloakService.updateGroup(id, existingKcGroup);
+        } else {
+            log.info("PATCH GROUP ID: {}: No group attributes (like displayName) were modified. Membership changes handled directly.", id);
         }
 
         GroupRepresentation patchedKcGroup = keycloakService.getGroupById(id)
                 .orElseThrow(() -> new ScimException("Failed to retrieve patched group: " + id, HttpStatus.INTERNAL_SERVER_ERROR));
-        List<UserRepresentation> members = keycloakService.getGroupMembers(id, 0, 200);
+        List<UserRepresentation> members = keycloakService.getGroupMembers(id, 0, 200); // Fetch current members
+        log.info("PATCH GROUP ID: {}: Fetched group with {} members after all patch operations.", id, members != null ? members.size() : 0);
         return groupMapper.toScimGroup(patchedKcGroup, members);
     }
 
@@ -209,25 +238,23 @@ public class ScimGroupService {
         keycloakService.getGroupById(id)
             .orElseThrow(() -> new ScimException("Group not found with id: " + id, HttpStatus.NOT_FOUND));
         keycloakService.deleteGroup(id);
+        log.info("Successfully deleted group from Keycloak with ID: {}", id);
     }
 
     public Map<String, Object> getGroups(int startIndex, int count, String filter) {
         int firstResult = Math.max(0, startIndex - 1);
         String searchFilter = null;
 
-        // Simplified filter: "displayName eq value"
         if (StringUtils.isNotBlank(filter) && filter.toLowerCase().startsWith("displayname eq ")) {
             searchFilter = filter.substring("displayname eq ".length()).replace("\"", "").trim();
         } else if (StringUtils.isNotBlank(filter)) {
-            // If filter is present but not 'displayName eq', Keycloak's group search might use it as a general search term
             searchFilter = filter;
         }
-
 
         List<GroupRepresentation> kcGroups = keycloakService.getGroups(firstResult, count, searchFilter);
         List<ScimGroup> scimGroups = new ArrayList<>();
         for(GroupRepresentation kcGroup : kcGroups) {
-            List<UserRepresentation> members = keycloakService.getGroupMembers(kcGroup.getId(), 0, 10); // Fetch a few members for preview
+            List<UserRepresentation> members = keycloakService.getGroupMembers(kcGroup.getId(), 0, 10);
             scimGroups.add(groupMapper.toScimGroup(kcGroup, members));
         }
         
