@@ -189,9 +189,8 @@ public class ScimUserService {
     }
 
     public void deleteUser(String id) {
-        // Check if user exists before attempting delete to return 404 if not found
         keycloakService.getUserById(id)
-            .orElseThrow(() -> new ScimException("User not found with id: " + id, HttpStatus.NOT_FOUND));
+            .orElseThrow(() -> new ScimException("User not found with id: " + id, HttpStatus.NOT_FOUND, "noTarget")); // Provide "noTarget"
         keycloakService.deleteUser(id);
     }
 

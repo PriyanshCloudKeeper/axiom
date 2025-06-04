@@ -23,10 +23,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ScimException.class)
     public ResponseEntity<Map<String, Object>> handleScimException(ScimException ex, WebRequest request) {
         log.error("SCIM Exception: Status={}, Type={}, Message={}", ex.getStatus(), ex.getScimType(), ex.getMessage(), ex);
+        String scimType = ex.getScimType();
+        if (scimType == null) { // If ScimException was created without a specific scimType
+            scimType = determineScimTypeFromStatus(ex.getStatus());
+        }
         Map<String, Object> errorBody = createScimErrorBody(
                 ex.getMessage(),
                 ex.getStatus().value(),
-                ex.getScimType() != null ? ex.getScimType() : determineScimTypeFromStatus(ex.getStatus())
+                scimType // Use the determined or provided scimType
         );
         return new ResponseEntity<>(errorBody, ex.getStatus());
     }
