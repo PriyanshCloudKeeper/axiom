@@ -82,7 +82,7 @@ public class UserMapper {
             }
         }
 
-        if (!attributes.isEmpty() || existingKcUser == null) { // Ensure attributes map is set if it was modified or is a new user
+        if (!attributes.isEmpty() || existingKcUser == null) { 
              kcUser.setAttributes(attributes);
         }
         log.debug("Finished mapping to Keycloak UserRepresentation. Attributes set: {}", kcUser.getAttributes());
@@ -90,9 +90,6 @@ public class UserMapper {
     }
 
     public ScimUser toScimUser(UserRepresentation kcUser) {
-        //*******************************************************************
-        // DEBUG POINT 2 - Logging Keycloak attributes received
-        //*******************************************************************
         log.debug("Mapping Keycloak UserRepresentation (ID: {}) to SCIM user. KC Attributes: {}", kcUser.getId(), kcUser.getAttributes());
 
         ScimUser scimUser = new ScimUser();
@@ -116,7 +113,7 @@ public class UserMapper {
             ScimUser.Email scimEmail = new ScimUser.Email();
             scimEmail.setValue(kcUser.getEmail());
             scimEmail.setPrimary(true);
-            scimEmail.setType("work"); // Default type
+            scimEmail.setType("work"); 
             scimUser.setEmails(List.of(scimEmail));
         }
 
@@ -134,9 +131,6 @@ public class UserMapper {
             ScimUser.EnterpriseUserExtension enterprise = new ScimUser.EnterpriseUserExtension();
             boolean enterpriseDataSet = false;
 
-            //*******************************************************************
-            // DEBUG POINT 3 - Logging retrieved attributes and enterpriseDataSet flag
-            //*******************************************************************
             String empNo = getFirstAttribute(kcAttributes, "employeeNumber");
             String dept = getFirstAttribute(kcAttributes, "department");
             String costCenter = getFirstAttribute(kcAttributes, "costCenter");
@@ -174,8 +168,6 @@ public class UserMapper {
             log.debug("toScimUser - enterpriseDataSet flag: {}", enterpriseDataSet);
             if (enterpriseDataSet) {
                 scimUser.setEnterpriseUser(enterprise);
-                // The getSchemas() override in ScimUser should ensure SCHEMA_CORE_USER is present.
-                // We explicitly add the enterprise schema here.
                 if (!scimUser.getSchemas().contains(ScimUser.SCHEMA_ENTERPRISE_USER)) {
                      scimUser.getSchemas().add(ScimUser.SCHEMA_ENTERPRISE_USER);
                 }
@@ -183,7 +175,7 @@ public class UserMapper {
             }
         }
 
-        ScimUser.Meta meta = new ScimUser.Meta(); // Meta should be from ScimUser.Meta
+        ScimUser.Meta meta = new ScimUser.Meta(); 
         meta.setResourceType("User");
         meta.setLocation(scimBaseUrl + "/scim/v2/Users/" + kcUser.getId());
         if (kcUser.getCreatedTimestamp() != null) {
