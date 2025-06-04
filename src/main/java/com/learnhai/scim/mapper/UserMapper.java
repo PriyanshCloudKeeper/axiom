@@ -5,7 +5,7 @@ import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.apache.commons.lang3.StringUtils;
-
+import lombok.extern.slf4j.Slf4j; // Ensure Lombok is configured for logging
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -16,25 +16,23 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Component
+@Slf4j // Added for logging
 public class UserMapper {
 
     private final String scimBaseUrl;
 
     public UserMapper(@Value("${scim.base-url:${server.servlet.context-path:}}") String scimBaseUrl) {
-        // Ensure base URL doesn't end with a slash if context path is just "/"
         this.scimBaseUrl = "/".equals(scimBaseUrl) ? "" : scimBaseUrl;
     }
 
 
     public UserRepresentation toKeycloakUser(ScimUser scimUser, UserRepresentation existingKcUser) {
         UserRepresentation kcUser = (existingKcUser != null) ? existingKcUser : new UserRepresentation();
+        log.debug("Mapping SCIM user to Keycloak UserRepresentation. Incoming SCIM userName: {}", scimUser.getUserName());
 
         if (StringUtils.isNotBlank(scimUser.getUserName())) {
             kcUser.setUsername(scimUser.getUserName());
         }
-        // SCIM 'active' maps to Keycloak 'enabled'
-        // Only set if scimUser.isActive() is explicitly provided, otherwise keep existing or Keycloak default
-        // For create, Keycloak defaults to enabled=true. For update, scimUser.isActive() should be checked.
         kcUser.setEnabled(scimUser.isActive());
 
 
@@ -48,20 +46,15 @@ public class UserMapper {
             scimUser.getEmails().stream()
                     .filter(ScimUser.Email::isPrimary)
                     .findFirst()
-                    .or(() -> scimUser.getEmails().stream().findFirst()) // Fallback to first email if no primary
+                    .or(() -> scimUser.getEmails().stream().filter(e -> StringUtils.isNotBlank(e.getValue())).findFirst())
                     .ifPresent(email -> {
                         if (StringUtils.isNotBlank(email.getValue())) {
                             kcUser.setEmail(email.getValue());
-                            kcUser.setEmailVerified(true); // Common practice for SCIM provisioned emails
+                            kcUser.setEmailVerified(true);
                         }
                     });
         }
 
-        // Handle password (Keycloak only accepts this on create or specific password reset flows)
-        // For simplicity, this mapper won't set kcUser.setCredentials(...) directly.
-        // That should be handled in the service layer if a password is provided.
-
-        // Map standard SCIM attributes to Keycloak custom attributes if not directly mapped
         Map<String, List<String>> attributes = kcUser.getAttributes() == null ? new HashMap<>() : new HashMap<>(kcUser.getAttributes());
         if (StringUtils.isNotBlank(scimUser.getExternalId())) attributes.put("externalId", List.of(scimUser.getExternalId()));
         if (StringUtils.isNotBlank(scimUser.getDisplayName())) attributes.put("displayName", List.of(scimUser.getDisplayName()));
@@ -69,12 +62,13 @@ public class UserMapper {
         if (StringUtils.isNotBlank(scimUser.getProfileUrl())) attributes.put("profileUrl", List.of(scimUser.getProfileUrl()));
         if (StringUtils.isNotBlank(scimUser.getTitle())) attributes.put("title", List.of(scimUser.getTitle()));
         if (StringUtils.isNotBlank(scimUser.getUserType())) attributes.put("userType", List.of(scimUser.getUserType()));
-        if (StringUtils.isNotBlank(scimUser.getPreferredLanguage())) attributes.put("locale", List.of(scimUser.getPreferredLanguage())); // Keycloak uses 'locale'
+        if (StringUtils.isNotBlank(scimUser.getPreferredLanguage())) attributes.put("locale", List.of(scimUser.getPreferredLanguage()));
         if (StringUtils.isNotBlank(scimUser.getTimezone())) attributes.put("timezone", List.of(scimUser.getTimezone()));
 
         // Enterprise User Extension
         if (scimUser.getEnterpriseUser() != null) {
             ScimUser.EnterpriseUserExtension enterprise = scimUser.getEnterpriseUser();
+            log.debug("Mapping EnterpriseUser extension from SCIM: {}", enterprise);
             if (StringUtils.isNotBlank(enterprise.getEmployeeNumber())) attributes.put("employeeNumber", List.of(enterprise.getEmployeeNumber()));
             if (StringUtils.isNotBlank(enterprise.getCostCenter())) attributes.put("costCenter", List.of(enterprise.getCostCenter()));
             if (StringUtils.isNotBlank(enterprise.getOrganization())) attributes.put("organization", List.of(enterprise.getOrganization()));
@@ -88,13 +82,19 @@ public class UserMapper {
             }
         }
 
-        if (!attributes.isEmpty()) {
-            kcUser.setAttributes(attributes);
+        if (!attributes.isEmpty() || existingKcUser == null) { // Ensure attributes map is set if it was modified or is a new user
+             kcUser.setAttributes(attributes);
         }
+        log.debug("Finished mapping to Keycloak UserRepresentation. Attributes set: {}", kcUser.getAttributes());
         return kcUser;
     }
 
     public ScimUser toScimUser(UserRepresentation kcUser) {
+        //*******************************************************************
+        // DEBUG POINT 2 - Logging Keycloak attributes received
+        //*******************************************************************
+        log.debug("Mapping Keycloak UserRepresentation (ID: {}) to SCIM user. KC Attributes: {}", kcUser.getId(), kcUser.getAttributes());
+
         ScimUser scimUser = new ScimUser();
         scimUser.setId(kcUser.getId());
         scimUser.setUserName(kcUser.getUsername());
@@ -120,7 +120,6 @@ public class UserMapper {
             scimUser.setEmails(List.of(scimEmail));
         }
 
-        // Map from Keycloak attributes back to SCIM fields
         Map<String, List<String>> kcAttributes = kcUser.getAttributes();
         if (kcAttributes != null) {
             scimUser.setExternalId(getFirstAttribute(kcAttributes, "externalId"));
@@ -129,54 +128,70 @@ public class UserMapper {
             scimUser.setProfileUrl(getFirstAttribute(kcAttributes, "profileUrl"));
             scimUser.setTitle(getFirstAttribute(kcAttributes, "title"));
             scimUser.setUserType(getFirstAttribute(kcAttributes, "userType"));
-            scimUser.setPreferredLanguage(getFirstAttribute(kcAttributes, "locale")); // Keycloak uses 'locale'
+            scimUser.setPreferredLanguage(getFirstAttribute(kcAttributes, "locale"));
             scimUser.setTimezone(getFirstAttribute(kcAttributes, "timezone"));
 
-            // Enterprise User Extension
             ScimUser.EnterpriseUserExtension enterprise = new ScimUser.EnterpriseUserExtension();
             boolean enterpriseDataSet = false;
-            enterprise.setEmployeeNumber(getFirstAttribute(kcAttributes, "employeeNumber"));
-            if(enterprise.getEmployeeNumber() != null) enterpriseDataSet = true;
 
-            enterprise.setCostCenter(getFirstAttribute(kcAttributes, "costCenter"));
-            if(enterprise.getCostCenter() != null) enterpriseDataSet = true;
-
-            enterprise.setOrganization(getFirstAttribute(kcAttributes, "organization"));
-            if(enterprise.getOrganization() != null) enterpriseDataSet = true;
-
-            enterprise.setDivision(getFirstAttribute(kcAttributes, "division"));
-            if(enterprise.getDivision() != null) enterpriseDataSet = true;
-
-            enterprise.setDepartment(getFirstAttribute(kcAttributes, "department"));
-            if(enterprise.getDepartment() != null) enterpriseDataSet = true;
-
+            //*******************************************************************
+            // DEBUG POINT 3 - Logging retrieved attributes and enterpriseDataSet flag
+            //*******************************************************************
+            String empNo = getFirstAttribute(kcAttributes, "employeeNumber");
+            String dept = getFirstAttribute(kcAttributes, "department");
+            String costCenter = getFirstAttribute(kcAttributes, "costCenter");
+            String organization = getFirstAttribute(kcAttributes, "organization");
+            String division = getFirstAttribute(kcAttributes, "division");
             String managerId = getFirstAttribute(kcAttributes, "managerId");
             String managerDisplayName = getFirstAttribute(kcAttributes, "managerDisplayName");
+
+            log.debug("Retrieved from kcAttributes for Enterprise mapping: employeeNumber='{}', department='{}', costCenter='{}', organization='{}', division='{}', managerId='{}', managerDisplayName='{}'",
+                    empNo, dept, costCenter, organization, division, managerId, managerDisplayName);
+
+            enterprise.setEmployeeNumber(empNo);
+            if(enterprise.getEmployeeNumber() != null) enterpriseDataSet = true;
+
+            enterprise.setCostCenter(costCenter);
+            if(enterprise.getCostCenter() != null) enterpriseDataSet = true;
+
+            enterprise.setOrganization(organization);
+            if(enterprise.getOrganization() != null) enterpriseDataSet = true;
+
+            enterprise.setDivision(division);
+            if(enterprise.getDivision() != null) enterpriseDataSet = true;
+
+            enterprise.setDepartment(dept);
+            if(enterprise.getDepartment() != null) enterpriseDataSet = true;
+
             if (managerId != null) {
                 ScimUser.EnterpriseUserExtension.Manager manager = new ScimUser.EnterpriseUserExtension.Manager();
                 manager.setValue(managerId);
-                manager.setDisplayName(managerDisplayName); // Can be set if available
-                // manager.setRef(...); // To construct $ref, you'd need base SCIM URL and path to Users + managerId
+                manager.setDisplayName(managerDisplayName);
                 enterprise.setManager(manager);
                 enterpriseDataSet = true;
             }
+
+            log.debug("toScimUser - enterpriseDataSet flag: {}", enterpriseDataSet);
             if (enterpriseDataSet) {
                 scimUser.setEnterpriseUser(enterprise);
-                scimUser.getSchemas().add(ScimUser.SCHEMA_ENTERPRISE_USER);
+                // The getSchemas() override in ScimUser should ensure SCHEMA_CORE_USER is present.
+                // We explicitly add the enterprise schema here.
+                if (!scimUser.getSchemas().contains(ScimUser.SCHEMA_ENTERPRISE_USER)) {
+                     scimUser.getSchemas().add(ScimUser.SCHEMA_ENTERPRISE_USER);
+                }
+                log.debug("Enterprise data set. Final SCIM user schemas: {}", scimUser.getSchemas());
             }
         }
 
-        ScimUser.Meta meta = new ScimUser.Meta();
+        ScimUser.Meta meta = new ScimUser.Meta(); // Meta should be from ScimUser.Meta
         meta.setResourceType("User");
         meta.setLocation(scimBaseUrl + "/scim/v2/Users/" + kcUser.getId());
         if (kcUser.getCreatedTimestamp() != null) {
             meta.setCreated(Instant.ofEpochMilli(kcUser.getCreatedTimestamp()));
         }
-        // Keycloak UserRepresentation doesn't have a direct lastModified timestamp in the base object.
-        // If you store it as an attribute, map it here. For now, set to created or now.
         meta.setLastModified(meta.getCreated() != null ? meta.getCreated() : Instant.now());
-        // meta.setVersion(...); // ETag - Keycloak doesn't provide this directly for users in a simple way
         scimUser.setMeta(meta);
+        log.debug("Finished mapping to SCIM user. Final ScimUser object: {}", scimUser);
 
         return scimUser;
     }
