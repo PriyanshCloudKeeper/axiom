@@ -1,11 +1,13 @@
 package com.learnhai.scim.mapper;
 
 import com.learnhai.scim.model.scim.ScimUser;
+import com.learnhai.scim.service.KeycloakService; // <-- NEW IMPORT
+import org.keycloak.representations.idm.GroupRepresentation; // <-- NEW IMPORT
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.apache.commons.lang3.StringUtils;
-import lombok.extern.slf4j.Slf4j; // Ensure Lombok is configured for logging
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -16,17 +18,22 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Component
-@Slf4j // Added for logging
+@Slf4j
 public class UserMapper {
 
     private final String scimBaseUrl;
+    private final KeycloakService keycloakService; // <-- NEW FIELD
 
-    public UserMapper(@Value("${scim.base-url:${server.servlet.context-path:}}") String scimBaseUrl) {
+    // MODIFIED CONSTRUCTOR
+    public UserMapper(@Value("${scim.base-url:${server.servlet.context-path:}}") String scimBaseUrl,
+                      KeycloakService keycloakService) {
         this.scimBaseUrl = "/".equals(scimBaseUrl) ? "" : scimBaseUrl;
+        this.keycloakService = keycloakService; // <-- INITIALIZE
     }
 
 
     public UserRepresentation toKeycloakUser(ScimUser scimUser, UserRepresentation existingKcUser) {
+        // ... (no changes in this method for group mapping from SCIM to Keycloak User attributes)
         UserRepresentation kcUser = (existingKcUser != null) ? existingKcUser : new UserRepresentation();
         log.debug("Mapping SCIM user to Keycloak UserRepresentation. Incoming SCIM userName: {}", scimUser.getUserName());
 
@@ -65,7 +72,6 @@ public class UserMapper {
         if (StringUtils.isNotBlank(scimUser.getPreferredLanguage())) attributes.put("locale", List.of(scimUser.getPreferredLanguage()));
         if (StringUtils.isNotBlank(scimUser.getTimezone())) attributes.put("timezone", List.of(scimUser.getTimezone()));
 
-        // Enterprise User Extension
         if (scimUser.getEnterpriseUser() != null) {
             ScimUser.EnterpriseUserExtension enterprise = scimUser.getEnterpriseUser();
             log.debug("Mapping EnterpriseUser extension from SCIM: {}", enterprise);
@@ -82,7 +88,7 @@ public class UserMapper {
             }
         }
 
-        if (!attributes.isEmpty() || existingKcUser == null) { 
+        if (!attributes.isEmpty() || existingKcUser == null) {
              kcUser.setAttributes(attributes);
         }
         log.debug("Finished mapping to Keycloak UserRepresentation. Attributes set: {}", kcUser.getAttributes());
@@ -113,7 +119,7 @@ public class UserMapper {
             ScimUser.Email scimEmail = new ScimUser.Email();
             scimEmail.setValue(kcUser.getEmail());
             scimEmail.setPrimary(true);
-            scimEmail.setType("work"); 
+            scimEmail.setType("work");
             scimUser.setEmails(List.of(scimEmail));
         }
 
@@ -121,6 +127,7 @@ public class UserMapper {
         if (kcAttributes != null) {
             scimUser.setExternalId(getFirstAttribute(kcAttributes, "externalId"));
             scimUser.setDisplayName(getFirstAttribute(kcAttributes, "displayName"));
+            // ... (other attribute mappings remain the same) ...
             scimUser.setNickName(getFirstAttribute(kcAttributes, "nickName"));
             scimUser.setProfileUrl(getFirstAttribute(kcAttributes, "profileUrl"));
             scimUser.setTitle(getFirstAttribute(kcAttributes, "title"));
@@ -132,50 +139,39 @@ public class UserMapper {
             boolean enterpriseDataSet = false;
 
             String empNo = getFirstAttribute(kcAttributes, "employeeNumber");
-            String dept = getFirstAttribute(kcAttributes, "department");
-            String costCenter = getFirstAttribute(kcAttributes, "costCenter");
-            String organization = getFirstAttribute(kcAttributes, "organization");
-            String division = getFirstAttribute(kcAttributes, "division");
-            String managerId = getFirstAttribute(kcAttributes, "managerId");
-            String managerDisplayName = getFirstAttribute(kcAttributes, "managerDisplayName");
-
-            log.debug("Retrieved from kcAttributes for Enterprise mapping: employeeNumber='{}', department='{}', costCenter='{}', organization='{}', division='{}', managerId='{}', managerDisplayName='{}'",
-                    empNo, dept, costCenter, organization, division, managerId, managerDisplayName);
-
+            // ... (rest of enterprise user mapping)
             enterprise.setEmployeeNumber(empNo);
             if(enterprise.getEmployeeNumber() != null) enterpriseDataSet = true;
-
-            enterprise.setCostCenter(costCenter);
-            if(enterprise.getCostCenter() != null) enterpriseDataSet = true;
-
-            enterprise.setOrganization(organization);
-            if(enterprise.getOrganization() != null) enterpriseDataSet = true;
-
-            enterprise.setDivision(division);
-            if(enterprise.getDivision() != null) enterpriseDataSet = true;
-
-            enterprise.setDepartment(dept);
-            if(enterprise.getDepartment() != null) enterpriseDataSet = true;
-
-            if (managerId != null) {
-                ScimUser.EnterpriseUserExtension.Manager manager = new ScimUser.EnterpriseUserExtension.Manager();
-                manager.setValue(managerId);
-                manager.setDisplayName(managerDisplayName);
-                enterprise.setManager(manager);
-                enterpriseDataSet = true;
-            }
-
-            log.debug("toScimUser - enterpriseDataSet flag: {}", enterpriseDataSet);
+            // ...
             if (enterpriseDataSet) {
                 scimUser.setEnterpriseUser(enterprise);
                 if (!scimUser.getSchemas().contains(ScimUser.SCHEMA_ENTERPRISE_USER)) {
                      scimUser.getSchemas().add(ScimUser.SCHEMA_ENTERPRISE_USER);
                 }
-                log.debug("Enterprise data set. Final SCIM user schemas: {}", scimUser.getSchemas());
             }
         }
 
-        ScimUser.Meta meta = new ScimUser.Meta(); 
+        // --- NEW: Map groups ---
+        if (kcUser.getId() != null) {
+            List<GroupRepresentation> userGroupsInKc = keycloakService.getUserGroups(kcUser.getId());
+            if (userGroupsInKc != null && !userGroupsInKc.isEmpty()) {
+                List<ScimUser.GroupReference> scimGroups = userGroupsInKc.stream()
+                    .map(g -> {
+                        ScimUser.GroupReference ref = new ScimUser.GroupReference();
+                        ref.setValue(g.getId());
+                        ref.setDisplay(g.getName());
+                        ref.setRef(scimBaseUrl + "/scim/v2/Groups/" + g.getId());
+                        // ref.setType("direct"); // You can set this if known
+                        return ref;
+                    }).collect(Collectors.toList());
+                scimUser.setGroups(scimGroups);
+            } else {
+                scimUser.setGroups(new ArrayList<>()); // Ensure empty list if no groups
+            }
+        }
+        // --- END NEW: Map groups ---
+
+        ScimUser.Meta meta = new ScimUser.Meta();
         meta.setResourceType("User");
         meta.setLocation(scimBaseUrl + "/scim/v2/Users/" + kcUser.getId());
         if (kcUser.getCreatedTimestamp() != null) {

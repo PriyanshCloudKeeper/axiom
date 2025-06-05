@@ -241,7 +241,19 @@ public class ScimSchemaController {
                 createAttribute("primary", "boolean", false, false, "none", "readWrite", "default", "A Boolean value indicating the 'primary' or preferred attribute value for this attribute.")
         )));
         attributes.add(createAttribute("password", "string", false, false, "none", "writeOnly", "never", "The User's password. This attribute is write-only, and will never be returned in a response."));
-
+        attributes.add(createComplexAttribute(
+                "groups",       // name
+                true,           // multiValued
+                "readOnly",     // mutability (typically readOnly for GET, write handled by PATCH logic)
+                "default",      // returned
+                "A list of groups to which the user belongs.", // description
+                List.of(        // subAttributes
+                        createAttribute("value", "string", false, false, "none", "readOnly", "default", "The identifier of the User's group."),
+                        createAttribute("display", "string", false, false, "none", "readOnly", "default", "A human-readable name for the User's group."),
+                        createAttribute("$ref", "reference", false, false, "none", "readOnly", "default", "The URI of the corresponding 'Group' resource."),
+                        createAttribute("type", "string", false, false, "none", "readOnly", "default", "A label indicating the type of group membership, e.g., 'direct'.")
+                )
+        ));
         return attributes;
     }
 

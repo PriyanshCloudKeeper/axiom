@@ -12,6 +12,7 @@ import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.admin.client.resource.UsersResource;
 import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.keycloak.admin.client.resource.UserResource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -46,6 +47,19 @@ public class KeycloakService {
 
     private GroupsResource getGroupsResource() {
         return getRealmResource().groups();
+    }
+
+    public List<GroupRepresentation> getUserGroups(String userId) {
+        try {
+            UserResource userResource = getUsersResource().get(userId);
+            return userResource.groups();
+        } catch (NotFoundException e) {
+            log.warn("User {} not found when trying to fetch their groups.", userId);
+            return Collections.emptyList();
+        } catch (Exception e) {
+            log.error("Error fetching groups for user {} from Keycloak: {}", userId, e.getMessage(), e);
+            return Collections.emptyList(); // Or throw ScimException
+        }
     }
 
     // --- User Operations ---

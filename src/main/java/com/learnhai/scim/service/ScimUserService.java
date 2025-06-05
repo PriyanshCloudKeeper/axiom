@@ -142,7 +142,7 @@ public class ScimUserService {
             throw new ScimException("Patch request must contain 'Operations'.", HttpStatus.BAD_REQUEST, "invalidSyntax");
         }
 
-        boolean userModified = false;
+        boolean coreUserAttributesModified = false; // Flag for changes to UserRepresentation attributes
         if (existingKcUser.getAttributes() == null) {
             existingKcUser.setAttributes(new HashMap<>());
             log.debug("PATCH: Initialized null attributes map on existingKcUser for ID: {}", id);
@@ -152,24 +152,31 @@ public class ScimUserService {
 
         for (Map<String, Object> operation : operations) {
             String op = (String) operation.get("op");
-            String path = (String) operation.get("path");
+            String path = (String) operation.get("path"); // Can be null for some ops like a replace on the resource itself
             Object value = operation.get("value");
             log.info("PATCH Processing op: '{}', path: '{}', value: '{}'", op, path, value);
 
-            if ("replace".equalsIgnoreCase(op) || "add".equalsIgnoreCase(op)) {
+            if (path == null) { // operation on the resource itself (e.g. replace all attributes) - less common for SCIM PATCH
+                log.warn("PATCH User ID: {}: Operation with null path is not fully supported for specific attribute targeting. Op: {}", id, op);
+                // Potentially handle full resource replace if op is "replace" and value is a full User object
+                // For now, we assume path is present for targeted operations.
+                continue;
+            }
+
+            if ("replace".equalsIgnoreCase(op) || "add".equalsIgnoreCase(op)) { // "add" often behaves like "replace" for single-valued attributes
                 if ("active".equalsIgnoreCase(path)) {
                     if (value instanceof Boolean) {
                         if (existingKcUser.isEnabled() != (Boolean)value) {
                             existingKcUser.setEnabled((Boolean) value);
-                            userModified = true;
-                            log.info("PATCH: 'active' changed to {}. userModified set to true.", value);
+                            coreUserAttributesModified = true;
+                            log.info("PATCH: 'active' changed to {}. coreUserAttributesModified set to true.", value);
                         } else {
                             log.info("PATCH: 'active' value is already {}. No change needed.", value);
                         }
                     } else {
                         throw new ScimException("Invalid value for 'active'. Boolean expected.", HttpStatus.BAD_REQUEST, "invalidValue");
                     }
-                } else if (path != null && path.equalsIgnoreCase("userName")) {
+                } else if (path.equalsIgnoreCase("userName")) {
                     if (value instanceof String && StringUtils.isNotBlank((String)value)) {
                         String newUsername = (String) value;
                         if (!newUsername.equalsIgnoreCase(existingKcUser.getUsername())) {
@@ -180,128 +187,175 @@ public class ScimUserService {
                                 }
                             });
                             existingKcUser.setUsername(newUsername);
-                            userModified = true;
-                            log.info("PATCH: 'userName' changed to {}. userModified set to true.", newUsername);
+                            coreUserAttributesModified = true;
+                            log.info("PATCH: 'userName' changed to {}. coreUserAttributesModified set to true.", newUsername);
                         } else {
-                             log.info("PATCH: 'userName' value is already {}. No change needed.", newUsername);
+                            log.info("PATCH: 'userName' value is already {}. No change needed.", newUsername);
                         }
                     } else {
                         throw new ScimException("Invalid value for 'userName'. Non-empty String expected.", HttpStatus.BAD_REQUEST, "invalidValue");
                     }
                 }
-                else if (path != null) { 
+                // Handling group membership "add"
+                else if ("groups".equalsIgnoreCase(path) && "add".equalsIgnoreCase(op)) {
+                    if (value instanceof List) {
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, Object>> groupsToAdd = (List<Map<String, Object>>) value;
+                        for (Map<String, Object> groupMap : groupsToAdd) {
+                            String groupId = (String) groupMap.get("value");
+                            if (StringUtils.isNotBlank(groupId)) {
+                                log.info("PATCH USER ID: {}: Attempting to add user to group ID '{}'", id, groupId);
+                                try {
+                                    keycloakService.getGroupById(groupId) // Verify group exists
+                                        .orElseThrow(() -> new ScimException("Group with ID " + groupId + " not found.", HttpStatus.BAD_REQUEST, "noTarget"));
+                                    keycloakService.addUserToGroup(id, groupId); // id is userId
+                                } catch (ScimException se) {
+                                    log.error("PATCH USER ID: {}: SCIM error adding user to group {}: {}", id, groupId, se.getMessage());
+                                    throw se;
+                                } catch (Exception e) {
+                                    log.error("PATCH USER ID: {}: Error adding user to group {}: {}", id, groupId, e.getMessage(), e);
+                                    throw new ScimException("Failed to add user " + id + " to group " + groupId, HttpStatus.INTERNAL_SERVER_ERROR, e);
+                                }
+                            } else {
+                                log.warn("PATCH USER ID: {}: Group ID value is blank in 'groups' add operation. Skipping.", id);
+                            }
+                        }
+                    } else {
+                        throw new ScimException("Invalid value for 'groups' in add operation. Array of group references expected.", HttpStatus.BAD_REQUEST, "invalidSyntax");
+                    }
+                }
+                // End of group membership "add"
+                else { // Generic attribute handling (for single string attributes)
                     String attributeName = path;
-                    if (path.startsWith("urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:")) {
+                    if (path.startsWith(ScimUser.SCHEMA_ENTERPRISE_USER + ":")) {
                         attributeName = path.substring(path.lastIndexOf(":") + 1);
                     } else if (path.equalsIgnoreCase("emails[primary eq true].value") || path.equalsIgnoreCase("emails[type eq \"work\"].value")) {
                         if (value instanceof String) {
                             if (existingKcUser.getEmail() == null || !((String)value).equalsIgnoreCase(existingKcUser.getEmail())) {
-                                existingKcUser.setEmail((String)value);
-                                existingKcUser.setEmailVerified(true);
-                                userModified = true;
-                                log.info("PATCH: 'email' changed to {}. userModified set to true.", value);
+                                // Check for email uniqueness before setting
+                                String newEmail = (String) value;
+                                List<UserRepresentation> usersWithEmail = keycloakService.findUsersByEmail(newEmail);
+                                usersWithEmail.stream()
+                                    .filter(u -> !u.getId().equals(id))
+                                    .findFirst()
+                                    .ifPresent(conflictingUser -> {
+                                        log.warn("Conflict on patchUser email: Email '{}' is already taken by another user (ID: {}).", newEmail, conflictingUser.getId());
+                                        throw new ScimException("Email '" + newEmail + "' is already taken by another user.", HttpStatus.CONFLICT, "uniqueness");
+                                    });
+                                existingKcUser.setEmail(newEmail);
+                                existingKcUser.setEmailVerified(true); // Assuming SCIM update implies verification or IdP handles it
+                                coreUserAttributesModified = true;
+                                log.info("PATCH: 'email' changed to {}. coreUserAttributesModified set to true.", value);
                             } else {
                                 log.info("PATCH: 'email' value is already {}. No change needed.", value);
                             }
+                        } else if (value == null && "replace".equalsIgnoreCase(op)) { // SCIM way to clear an attribute
+                            if (existingKcUser.getEmail() != null) {
+                                existingKcUser.setEmail(null);
+                                existingKcUser.setEmailVerified(false);
+                                coreUserAttributesModified = true;
+                                log.info("PATCH: 'email' cleared. coreUserAttributesModified set to true.");
+                            }
                         }
+                        // This 'continue' was correct for the email path as it directly modifies existingKcUser fields.
+                        // For other attributes that go into the 'attributes' map, it should not continue.
+                        // Let's ensure this only applies if email was handled.
+                        // Actually, the generic handler below works fine even for email if we remove the specific email block.
+                        // For simplicity of the current change, let's keep it.
                         continue; 
                     }
 
+
+                    // For other string attributes or enterprise attributes, store in Keycloak attributes map
                     if (value instanceof String) {
                         List<String> oldValList = attributesToModify.get(attributeName);
                         String oldVal = (oldValList != null && !oldValList.isEmpty()) ? oldValList.get(0) : null;
                         
-                        log.info("[PATCH_DEBUG] Before modifying '{}': current value in map is '{}'",
-                                 attributeName, oldValList);
-
                         if (oldVal == null || !oldVal.equals(value)) {
                             attributesToModify.put(attributeName, Collections.singletonList((String)value));
-                            userModified = true;
-                            log.info("[PATCH_DEBUG] After modifying '{}' to '{}': userModified is {}. Attributes on existingKcUser for update: {}",
-                                     attributeName, value, userModified, existingKcUser.getAttributes());
+                            coreUserAttributesModified = true;
+                            log.info("[PATCH_DEBUG] Attribute '{}' set/changed to '{}'. coreUserAttributesModified is {}.",
+                                    attributeName, value, coreUserAttributesModified);
                         } else {
                             log.info("PATCH: Attribute '{}' value is already '{}'. No change needed.", attributeName, value);
                         }
-                    } else if (value == null && attributesToModify.containsKey(attributeName)) { 
-                        attributesToModify.remove(attributeName);
-                        userModified = true;
-                        log.info("[PATCH_DEBUG] After removing '{}' (value was null): userModified is {}. Attributes on existingKcUser for update: {}",
-                                 attributeName, userModified, existingKcUser.getAttributes());
+                    } else if (value == null && "replace".equalsIgnoreCase(op)) { // SCIM way to clear an attribute via replace op with null value
+                        if (attributesToModify.containsKey(attributeName)) {
+                            attributesToModify.remove(attributeName);
+                            coreUserAttributesModified = true;
+                            log.info("[PATCH_DEBUG] Attribute '{}' removed (value was null in replace). coreUserAttributesModified is {}.",
+                                    attributeName, coreUserAttributesModified);
+                        }
                     }
                 }
             } else if ("remove".equalsIgnoreCase(op)) {
-                String attributeNameToRemove = path;
-                 if (path != null && path.startsWith("urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:")) {
-                    attributeNameToRemove = path.substring(path.lastIndexOf(":") + 1);
+                // Handling group membership "remove"
+                if (path.toLowerCase().startsWith("groups[value eq ")) {
+                    String groupIdToRemove = path.substring(path.toLowerCase().indexOf("\"") + 1, path.toLowerCase().lastIndexOf("\""));
+                    if (StringUtils.isNotBlank(groupIdToRemove)) {
+                        log.info("PATCH USER ID: {}: Attempting to remove user from group ID '{}'", id, groupIdToRemove);
+                        try {
+                            keycloakService.removeUserFromGroup(id, groupIdToRemove); // id is userId
+                        } catch (Exception e) {
+                            log.error("PATCH USER ID: {}: Error removing user from group {}: {}", id, groupIdToRemove, e.getMessage(), e);
+                            throw new ScimException("Failed to remove user " + id + " from group " + groupIdToRemove, HttpStatus.INTERNAL_SERVER_ERROR, e);
+                        }
+                    } else {
+                        log.warn("PATCH USER ID: {}: Group ID to remove is blank in 'groups[value eq ...]' path. Skipping.", id);
+                    }
                 }
-                if (attributesToModify.containsKey(attributeNameToRemove)) {
-                    attributesToModify.remove(attributeNameToRemove);
-                    userModified = true;
-                    log.info("PATCH: Attribute '{}' removed. userModified set to true. Attributes map now: {}", attributeNameToRemove, attributesToModify);
-                } else if ("active".equalsIgnoreCase(path) && existingKcUser.isEnabled()) {
-                    existingKcUser.setEnabled(false);
-                    userModified = true;
-                    log.info("PATCH: 'active' removed (set to false). userModified set to true.");
+                // End of group membership "remove"
+                else { // Generic attribute removal
+                    String attributeNameToRemove = path;
+                    if (path.startsWith(ScimUser.SCHEMA_ENTERPRISE_USER + ":")) {
+                        attributeNameToRemove = path.substring(path.lastIndexOf(":") + 1);
+                    } else if (path.equalsIgnoreCase("emails[primary eq true].value") || path.equalsIgnoreCase("emails[type eq \"work\"].value")) {
+                        if (existingKcUser.getEmail() != null) {
+                            existingKcUser.setEmail(null);
+                            existingKcUser.setEmailVerified(false); // Or based on your policy
+                            coreUserAttributesModified = true;
+                            log.info("PATCH: Email attribute removed via path {}. coreUserAttributesModified set to true.", path);
+                        }
+                        continue; // Email handled directly on existingKcUser
+                    }
+
+
+                    if (attributesToModify.containsKey(attributeNameToRemove)) {
+                        attributesToModify.remove(attributeNameToRemove);
+                        coreUserAttributesModified = true;
+                        log.info("PATCH: Attribute '{}' removed. coreUserAttributesModified set to true. Attributes map now: {}", attributeNameToRemove, attributesToModify);
+                    } else if ("active".equalsIgnoreCase(path)) { // Removing 'active' implies setting to false if it was true
+                        if (existingKcUser.isEnabled()){
+                        existingKcUser.setEnabled(false);
+                        coreUserAttributesModified = true;
+                        log.info("PATCH: 'active' removed (set to false). coreUserAttributesModified set to true.");
+                        }
+                    } else {
+                        log.info("PATCH: Attribute '{}' not found for removal or already matches desired state (e.g. active already false).", attributeNameToRemove);
+                    }
                 }
             }
         }
 
-        log.info("PATCH ENDLOOP User ID: {}, userModified flag: {}, Attributes on existingKcUser before final update decision: {}",
-                id, userModified, existingKcUser.getAttributes());
+        log.info("PATCH ENDLOOP User ID: {}, coreUserAttributesModified flag: {}, Attributes on existingKcUser before final update decision: {}",
+                id, coreUserAttributesModified, existingKcUser.getAttributes());
 
-        if (userModified) {
-            log.info("[PATCH_DEBUG] FINAL CHECK before keycloakService.updateUser for ID: {}. existingKcUser attributes: {}", id, existingKcUser.getAttributes());
+        if (coreUserAttributesModified) {
+            log.info("[PATCH_DEBUG] FINAL CHECK before keycloakService.updateUser for ID: {}. existingKcUser attributes: {}, username: {}, enabled: {}",
+                    id, existingKcUser.getAttributes(), existingKcUser.getUsername(), existingKcUser.isEnabled());
             keycloakService.updateUser(id, existingKcUser);
-            log.info("Successfully patched user in Keycloak with ID: {}", id);
+            log.info("Successfully patched core user attributes in Keycloak with ID: {}", id);
         } else {
-            log.info("Patch operation for user ID: {} resulted in no effective changes to be sent to Keycloak. Attributes on existingKcUser: {}", id, existingKcUser.getAttributes());
+            log.info("Patch operation for user ID: {} resulted in no effective changes to core user attributes. Group membership changes are handled separately. Attributes on existingKcUser: {}", id, existingKcUser.getAttributes());
         }
 
+        // Always fetch the latest state of the user, as group memberships might have changed
+        // even if coreUserAttributesModified was false.
         UserRepresentation patchedKcUser = keycloakService.getUserById(id)
                 .orElseThrow(() -> {
-                    log.error("Critical error: Failed to retrieve just-patched user with ID: {}", id);
-                    return new ScimException("Failed to retrieve patched user: " + id, HttpStatus.INTERNAL_SERVER_ERROR);
+                    log.error("Critical error: Failed to retrieve user with ID {} after patch operations.", id);
+                    return new ScimException("Failed to retrieve user after patch: " + id, HttpStatus.INTERNAL_SERVER_ERROR);
                 });
         return userMapper.toScimUser(patchedKcUser);
-    }
-
-    public void deleteUser(String id) {
-        keycloakService.getUserById(id)
-            .orElseThrow(() -> new ScimException("User not found with id: " + id, HttpStatus.NOT_FOUND, "noTarget"));
-        keycloakService.deleteUser(id);
-        log.info("Successfully deleted user from Keycloak with ID: {}", id);
-    }
-
-    public Map<String, Object> getUsers(int startIndex, int count, String filter) {
-        int firstResult = Math.max(0, startIndex - 1);
-        String searchString = null;
-
-        if (StringUtils.isNotBlank(filter)) {
-            String lowerFilter = filter.toLowerCase();
-            if (lowerFilter.startsWith("username eq ")) {
-                searchString = filter.substring("username eq ".length()).replace("\"", "").trim();
-            } else if (lowerFilter.startsWith("email eq ")) {
-                 searchString = filter.substring("email eq ".length()).replace("\"", "").trim();
-            } else if (lowerFilter.startsWith("displayname co ")) {
-                 searchString = filter.substring("displayname co ".length()).replace("\"", "").trim();
-            }
-            log.debug("Applying search filter to Keycloak: {}", searchString);
-        }
-
-        List<UserRepresentation> kcLusers = keycloakService.getUsers(firstResult, count, searchString);
-        List<ScimUser> scimUsers = kcLusers.stream()
-                .map(userMapper::toScimUser)
-                .collect(Collectors.toList());
-
-        long totalResults = keycloakService.countUsers(searchString);
-        log.debug("getUsers - Filter: '{}', Keycloak Search: '{}', Found: {}, Total: {}", filter, searchString, scimUsers.size(), totalResults);
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("schemas", Collections.singletonList("urn:ietf:params:scim:api:messages:2.0:ListResponse"));
-        response.put("totalResults", totalResults);
-        response.put("startIndex", startIndex);
-        response.put("itemsPerPage", scimUsers.size());
-        response.put("Resources", scimUsers);
-        return response;
     }
 }
