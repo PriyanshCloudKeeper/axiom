@@ -39,6 +39,9 @@ management:
 # SCIM Configuration
 scim:
   base-url: ${SCIM_BASE_URL:http://localhost:8080}
+  bridge:
+    auth:
+      static-tokens: ${SCIM_STATIC_TOKENS:}
   resource-types:
     - User
     - Group
