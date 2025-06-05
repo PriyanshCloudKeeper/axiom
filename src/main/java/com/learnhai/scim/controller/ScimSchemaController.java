@@ -244,7 +244,7 @@ public class ScimSchemaController {
                 "groups",       // name
                 true,           // multiValued
                 "readOnly",     // mutability (typically readOnly for GET, PATCH logic handles writes)
-                "default",      // returned
+                "default",
                 "A list of groups to which the user belongs.", // description
                 List.of(        // subAttributes
                         createAttribute("value", "string", false, false, "none", "readOnly", "default", "The identifier of the User's group."),
