@@ -28,6 +28,7 @@ public class ScimUserController {
 
     @PostMapping
     public ResponseEntity<ScimUser> createUser(@Valid @RequestBody ScimUser scimUser) {
+        log.info("SCIM createUser request body (deserialized): {}", scimUser); 
         log.info("SCIM createUser request received for userName: {}", scimUser.getUserName());
         ScimUser createdUser = scimUserService.createUser(scimUser);
         URI location = ServletUriComponentsBuilder
