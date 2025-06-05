@@ -30,7 +30,7 @@ public class ScimUser extends ScimResource {
     private String password;
     private List<Email> emails;
     private List<PhoneNumber> phoneNumbers;
-    private List<GroupReference> groups; // <-- NEW FIELD
+    private List<GroupReference> groups; // <-- ENSURE THIS IS PRESENT
 
     @JsonProperty("urn:ietf:params:scim:schemas:extension:enterprise:2.0:User")
     private EnterpriseUserExtension enterpriseUser;
@@ -38,7 +38,6 @@ public class ScimUser extends ScimResource {
     public static final String SCHEMA_CORE_USER = "urn:ietf:params:scim:schemas:core:2.0:User";
     public static final String SCHEMA_ENTERPRISE_USER = "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User";
 
-    // Inner classes (Name, Email, PhoneNumber, Meta, EnterpriseUserExtension) remain the same...
     @Data
     @NoArgsConstructor
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -74,13 +73,14 @@ public class ScimUser extends ScimResource {
     @Data
     @NoArgsConstructor
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public static class Meta {
-        private String resourceType = "User";
+    public static class Meta { // This Meta class is defined in ScimUser
+        private String resourceType = "User"; // Default for User's Meta
         private Instant created;
         private Instant lastModified;
         private String location;
         private String version;
     }
+
 
     @Data
     @NoArgsConstructor
@@ -104,7 +104,7 @@ public class ScimUser extends ScimResource {
         }
     }
 
-    // NEW INNER CLASS for group reference
+    // NEW INNER CLASS for group reference - ENSURE THIS IS PRESENT
     @Data
     @NoArgsConstructor
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -113,7 +113,7 @@ public class ScimUser extends ScimResource {
         private String display; // Group Display Name
         @JsonProperty("$ref")
         private String ref; // SCIM URI for the group
-        private String type; // e.g., "direct" - though we might not populate this deeply yet
+        private String type; // e.g., "direct"
     }
     // End NEW INNER CLASS
 
@@ -122,6 +122,7 @@ public class ScimUser extends ScimResource {
          if (super.getMeta() == null) {
              super.setMeta(new Meta());
          }
+         // Ensure resourceType is set for User if it wasn't already
          if (super.getMeta().getResourceType() == null) {
               super.getMeta().setResourceType("User");
          }

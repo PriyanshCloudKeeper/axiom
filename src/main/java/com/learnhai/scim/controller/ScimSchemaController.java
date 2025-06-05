@@ -1,7 +1,7 @@
 package com.learnhai.scim.controller;
 
-import com.learnhai.scim.model.scim.ScimUser; // For schema URN constants
-import com.learnhai.scim.model.scim.ScimGroup; // For schema URN constants
+import com.learnhai.scim.model.scim.ScimUser; 
+import com.learnhai.scim.model.scim.ScimGroup; 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,40 +21,40 @@ public class ScimSchemaController {
     private static final String SCHEMA_LIST_RESPONSE = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
     private static final String SCHEMA_RESOURCE_TYPE = "urn:ietf:params:scim:schemas:core:2.0:ResourceType";
     private static final String SCHEMA_SERVICE_PROVIDER_CONFIG = "urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig";
-    private static final String SCHEMA_SCHEMA_META = "urn:ietf:params:scim:schemas:meta:2.0:Schema";
+    // private static final String SCHEMA_SCHEMA_META = "urn:ietf:params:scim:schemas:meta:2.0:Schema"; // Not directly used as a constant value in responses here
 
 
     @GetMapping("/ServiceProviderConfig")
     public ResponseEntity<Map<String, Object>> getServiceProviderConfig() {
-        Map<String, Object> config = new LinkedHashMap<>(); // Use LinkedHashMap to preserve order
+        Map<String, Object> config = new LinkedHashMap<>(); 
         config.put("schemas", List.of(SCHEMA_SERVICE_PROVIDER_CONFIG));
-        config.put("documentationUri", "https://example.com/scim/docs"); // Replace with your docs URL
+        config.put("documentationUri", "https://example.com/scim/docs"); 
 
         Map<String, Object> patch = new LinkedHashMap<>();
         patch.put("supported", true);
         config.put("patch", patch);
 
         Map<String, Object> bulk = new LinkedHashMap<>();
-        bulk.put("supported", false); // Set to true if you implement bulk
-        bulk.put("maxOperations", 1000); // Example if supported
-        bulk.put("maxPayloadSize", 1048576); // Example if supported
+        bulk.put("supported", false); 
+        bulk.put("maxOperations", 1000); 
+        bulk.put("maxPayloadSize", 1048576); 
         config.put("bulk", bulk);
 
         Map<String, Object> filter = new LinkedHashMap<>();
-        filter.put("supported", true); // Basic filtering is often supported
-        filter.put("maxResults", 200); // Max results per page
+        filter.put("supported", true); 
+        filter.put("maxResults", 200); 
         config.put("filter", filter);
 
         Map<String, Object> changePassword = new LinkedHashMap<>();
-        changePassword.put("supported", false); // Set to true if you implement password changes via SCIM
+        changePassword.put("supported", false); 
         config.put("changePassword", changePassword);
 
         Map<String, Object> sort = new LinkedHashMap<>();
-        sort.put("supported", false); // Set to true if you implement sorting
+        sort.put("supported", false); 
         config.put("sort", sort);
 
         Map<String, Object> etag = new LinkedHashMap<>();
-        etag.put("supported", false); // Set to true if you implement ETag support
+        etag.put("supported", false); 
         config.put("etag", etag);
 
         List<Map<String, Object>> authSchemes = new ArrayList<>();
@@ -62,8 +62,6 @@ public class ScimSchemaController {
         oauthBearer.put("type", "oauthbearertoken");
         oauthBearer.put("name", "OAuth Bearer Token");
         oauthBearer.put("description", "OAuth 2.0 Bearer Token for SCIM authentication.");
-        // oauthBearer.put("specUri", "http://www.rfc-editor.org/info/rfc6750");
-        // oauthBearer.put("documentationUri", "http://example.com/help/oauth.html");
         authSchemes.add(oauthBearer);
         config.put("authenticationSchemes", authSchemes);
 
@@ -103,7 +101,7 @@ public class ScimSchemaController {
         List<Map<String, Object>> schemas = Arrays.asList(
                 getUserSchemaDefinition(),
                 getGroupSchemaDefinition(),
-                getEnterpriseUserSchemaDefinition() // If you support it
+                getEnterpriseUserSchemaDefinition() 
         );
 
         Map<String, Object> listResponse = new LinkedHashMap<>();
@@ -142,7 +140,7 @@ public class ScimSchemaController {
         enterpriseExt.put("required", false);
         schemaExtensions.add(enterpriseExt);
         userType.put("schemaExtensions", schemaExtensions);
-        // meta for resourceType itself
+        
         Map<String,Object> meta = new LinkedHashMap<>();
         meta.put("location", scimBaseUrl + "/scim/v2/ResourceTypes/User");
         meta.put("resourceType", "ResourceType");
@@ -158,7 +156,7 @@ public class ScimSchemaController {
         groupType.put("description", "Group");
         groupType.put("endpoint", scimBaseUrl + "/scim/v2/Groups");
         groupType.put("schema", ScimGroup.SCHEMA_CORE_GROUP);
-        // meta for resourceType itself
+        
         Map<String,Object> meta = new LinkedHashMap<>();
         meta.put("location", scimBaseUrl + "/scim/v2/ResourceTypes/Group");
         meta.put("resourceType", "ResourceType");
@@ -172,7 +170,7 @@ public class ScimSchemaController {
         schema.put("id", ScimUser.SCHEMA_CORE_USER);
         schema.put("name", "User");
         schema.put("description", "Core User Account");
-        schema.put("attributes", getUserAttributes());
+        schema.put("attributes", getUserAttributes()); // This will now include 'groups'
         Map<String,Object> meta = new LinkedHashMap<>();
         meta.put("resourceType", "Schema");
         meta.put("location", scimBaseUrl + "/scim/v2/Schemas/" + ScimUser.SCHEMA_CORE_USER);
@@ -209,7 +207,6 @@ public class ScimSchemaController {
 
     private List<Map<String, Object>> getUserAttributes() {
         List<Map<String, Object>> attributes = new ArrayList<>();
-        // id, externalId, meta are common, defined by ScimResource usually
         attributes.add(createAttribute("userName", "string", false, true, "server", "readWrite", "default", "Unique identifier for the User."));
         attributes.add(createComplexAttribute("name", false, "readWrite", "default", "The components of the user's real name.", List.of(
                 createAttribute("formatted", "string", false, false, "none", "readWrite", "default", "The full name, including all middle names, titles, and suffixes."),
@@ -241,10 +238,12 @@ public class ScimSchemaController {
                 createAttribute("primary", "boolean", false, false, "none", "readWrite", "default", "A Boolean value indicating the 'primary' or preferred attribute value for this attribute.")
         )));
         attributes.add(createAttribute("password", "string", false, false, "none", "writeOnly", "never", "The User's password. This attribute is write-only, and will never be returned in a response."));
+        
+        // --- ENSURE THIS 'groups' ATTRIBUTE DEFINITION IS PRESENT ---
         attributes.add(createComplexAttribute(
                 "groups",       // name
                 true,           // multiValued
-                "readOnly",     // mutability (typically readOnly for GET, write handled by PATCH logic)
+                "readOnly",     // mutability (typically readOnly for GET, PATCH logic handles writes)
                 "default",      // returned
                 "A list of groups to which the user belongs.", // description
                 List.of(        // subAttributes
@@ -254,6 +253,7 @@ public class ScimSchemaController {
                         createAttribute("type", "string", false, false, "none", "readOnly", "default", "A label indicating the type of group membership, e.g., 'direct'.")
                 )
         ));
+        // --- END OF 'groups' ATTRIBUTE ---
         return attributes;
     }
 
@@ -261,7 +261,7 @@ public class ScimSchemaController {
         List<Map<String, Object>> attributes = new ArrayList<>();
         attributes.add(createAttribute("displayName", "string", false, true, "none", "readWrite", "default", "A human-readable name for the Group. REQUIRED."));
         attributes.add(createComplexAttribute("members", true, "readWrite", "default", "A list of members of the Group.", List.of(
-                createAttribute("value", "string", false, false, "none", "readWrite", "default", "Identifier of the member of this Group."), // User ID or Group ID
+                createAttribute("value", "string", false, false, "none", "readWrite", "default", "Identifier of the member of this Group."),
                 createAttribute("display", "string", false, false, "none", "readOnly", "default", "Human-readable name of the member display."),
                 createAttribute("$ref", "reference", false, false, "none", "readOnly", "default", "The URI of the corresponding 'User' or 'Group' resource."),
                 createAttribute("type", "string", false, false, "none", "readWrite", "default", "A label indicating the type of resource, e.g., 'User' or 'Group'.")
@@ -294,11 +294,10 @@ public class ScimSchemaController {
         attr.put("multiValued", multiValued);
         attr.put("description", description);
         attr.put("required", required);
-        attr.put("caseExact", "reference".equals(type) || "binary".equals(type)); // Typically true for references and binary
+        attr.put("caseExact", "reference".equals(type) || "binary".equals(type)); 
         attr.put("mutability", mutability);
         attr.put("returned", returned);
-        attr.put("uniqueness", uniqueness); // "none", "server", "global"
-        // if (type.equals("string")) { attr.put("canonicalValues", new ArrayList<>()); } // If there are canonical values
+        attr.put("uniqueness", uniqueness); 
         return attr;
     }
 
@@ -309,7 +308,7 @@ public class ScimSchemaController {
         attr.put("type", "complex");
         attr.put("multiValued", multiValued);
         attr.put("description", description);
-        attr.put("required", false); // Complex attributes themselves usually not required, sub-attributes might be
+        attr.put("required", false); 
         attr.put("mutability", mutability);
         attr.put("returned", returned);
         attr.put("subAttributes", subAttributes);
