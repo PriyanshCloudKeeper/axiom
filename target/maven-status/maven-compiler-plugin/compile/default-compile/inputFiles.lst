@@ -1,5 +1,6 @@
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/mapper/GroupMapper.java
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/controller/ScimUserController.java
+/home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/config/auth/StaticTokenAuthenticationProvider.java
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/controller/ScimGroupController.java
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/service/ScimUserService.java
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/controller/ScimSchemaController.java
@@ -8,10 +9,13 @@
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/model/scim/ScimUser.java
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/config/SecurityConfig.java
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/model/scim/ScimResource.java
+/home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/config/auth/StaticTokenAuthenticationFilter.java
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/config/KeycloakConfig.java
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/model/scim/ScimGroup.java
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/config/WebConfig.java
+/home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/config/auth/StaticBearerTokenAuthenticationToken.java
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/exception/ScimException.java
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/mapper/UserMapper.java
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/ScimKeycloakBridgeApplication.java
+/home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/config/StaticTokenConfig.java
 /home/priyansh/Work/scim-keycloak-bridge/src/main/java/com/learnhai/scim/service/KeycloakService.java

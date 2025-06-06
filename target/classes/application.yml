@@ -41,7 +41,11 @@ scim:
   base-url: ${SCIM_BASE_URL:http://localhost:8080}
   bridge:
     auth:
-      static-tokens: ${SCIM_STATIC_TOKENS:}
+      static-tokens:
+        - idp-name: "idp_okta" # An identifier for the IdP
+          token: "dobJLJsJ7X7VQwcNNtOaZtc6Ghc311l5q2E3RUhoUh35y20SO0gYEXHsWJvREpFT"
+        - idp-name: "idp_aws"
+          token: "bCBTLjqCMmKuCyK3drXnazSAmDh8TForCKXAHVgjXoqdfBHQ40aQ8cULOJlSkS2bgPmUSUphVsnIzEK9"
   resource-types:
     - User
     - Group

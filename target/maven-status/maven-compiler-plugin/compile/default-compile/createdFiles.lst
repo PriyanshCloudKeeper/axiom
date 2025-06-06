@@ -1,12 +1,16 @@
 com/learnhai/scim/controller/ScimUserController.class
+com/learnhai/scim/config/auth/StaticBearerTokenAuthenticationToken.class
 com/learnhai/scim/ScimKeycloakBridgeApplication.class
 com/learnhai/scim/model/scim/ScimUser$EnterpriseUserExtension$Manager.class
 com/learnhai/scim/model/scim/ScimUser$Email.class
 com/learnhai/scim/service/KeycloakService.class
 com/learnhai/scim/model/scim/ScimUser$Name.class
+com/learnhai/scim/config/StaticTokenConfig.class
 com/learnhai/scim/model/scim/ScimGroup$Member.class
 com/learnhai/scim/model/scim/ScimGroup.class
 com/learnhai/scim/model/scim/ScimResource.class
+com/learnhai/scim/config/auth/StaticTokenAuthenticationProvider.class
+com/learnhai/scim/config/auth/StaticTokenAuthenticationFilter.class
 com/learnhai/scim/mapper/GroupMapper.class
 com/learnhai/scim/controller/ScimGroupController.class
 com/learnhai/scim/service/ScimGroupService.class
@@ -16,6 +20,7 @@ com/learnhai/scim/model/scim/ScimUser$Meta.class
 com/learnhai/scim/config/WebConfig.class
 com/learnhai/scim/exception/GlobalExceptionHandler$1.class
 com/learnhai/scim/model/scim/ScimUser$PhoneNumber.class
+com/learnhai/scim/config/StaticTokenConfig$StaticClientToken.class
 com/learnhai/scim/service/ScimUserService.class
 com/learnhai/scim/model/scim/ScimUser$GroupReference.class
 com/learnhai/scim/exception/ScimException.class
