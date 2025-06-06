@@ -55,14 +55,15 @@ public class ScimUserService {
         UserRepresentation kcUserToCreate = userMapper.toKeycloakUser(scimUser, null);
         log.debug("Attempting to create Keycloak user. Mapped UserRepresentation attributes: {}", kcUserToCreate.getAttributes());
 
-        if (StringUtils.isNotBlank(scimUser.getPassword())) {
-            CredentialRepresentation credential = new CredentialRepresentation();
-            credential.setTemporary(false);
-            credential.setType(CredentialRepresentation.PASSWORD);
-            credential.setValue(scimUser.getPassword());
-            kcUserToCreate.setCredentials(Collections.singletonList(credential));
-            log.debug("Password provided for user '{}', adding to credentials.", scimUser.getUserName());
-        }
+        // if (StringUtils.isNotBlank(scimUser.getPassword())) {
+        //     CredentialRepresentation credential = new CredentialRepresentation();
+        //     credential.setTemporary(false);
+        //     credential.setType(CredentialRepresentation.PASSWORD);
+        //     credential.setValue(scimUser.getPassword());
+        //     kcUserToCreate.setCredentials(Collections.singletonList(credential));
+        //     log.debug("Password provided for user '{}', adding to credentials.", scimUser.getUserName());
+        // }
+        log.warn("DEBUG: Password processing is TEMPORARILY SKIPPED in ScimUserService.createUser");
 
         String userId = keycloakService.createUser(kcUserToCreate);
         log.info("Successfully created user in Keycloak with ID: {}", userId);
