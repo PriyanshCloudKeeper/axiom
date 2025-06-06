@@ -40,31 +40,23 @@ public class StaticTokenAuthenticationFilter extends OncePerRequestFilter {
         final String header = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (header == null || !header.toLowerCase().startsWith("bearer ")) {
             if (logger.isDebugEnabled()) {
-                logger.debug("No Bearer token header found. Skipping StaticTokenAuthenticationFilter.");
+                logger.debug("No Bearer token header found or not a Bearer token. Passing to next filter / default handling.");
             }
+            // If no bearer token, this request will fail authorization later if auth is required,
+            // triggering the AuthenticationEntryPoint.
             filterChain.doFilter(request, response);
             return;
         }
 
         String token = header.substring(7); // "Bearer ".length()
 
-        // Heuristic: If token contains '.', assume it's a JWT and let JWT filter handle it.
-        // Otherwise, attempt static token authentication.
-        if (token.contains(".")) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Token contains '.' suggesting JWT. Skipping static token auth, passing to JWT filter for token: " + token);
-            }
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        // Token does not contain '.', attempt static token authentication
         try {
             if (logger.isDebugEnabled()) {
                 logger.debug("Attempting static token authentication for token: " + token);
             }
             StaticBearerTokenAuthenticationToken authRequest = new StaticBearerTokenAuthenticationToken(token);
-            Authentication authResult = this.authenticationManager.authenticate(authRequest); // This uses StaticTokenAuthenticationProvider
+            // This AuthenticationManager only knows about StaticTokenAuthenticationProvider for this chain
+            Authentication authResult = this.authenticationManager.authenticate(authRequest); 
 
             SecurityContext context = SecurityContextHolder.createEmptyContext();
             context.setAuthentication(authResult);
@@ -73,20 +65,28 @@ public class StaticTokenAuthenticationFilter extends OncePerRequestFilter {
             if (logger.isDebugEnabled()) {
                 logger.debug("Static token authentication successful. Principal: " + authResult.getPrincipal());
             }
-            // After successful static auth, proceed down the chain.
-            // The BearerTokenAuthenticationFilter should now see an authenticated context.
-            filterChain.doFilter(request, response);
+            filterChain.doFilter(request, response); // Proceed with authenticated request
 
         } catch (AuthenticationException e) {
-            // Static token authentication failed (e.g., token not found in config)
+            // Static token authentication failed (e.g., token not found in config or malformed for static needs)
             if (logger.isDebugEnabled()) {
                 logger.debug("Static token authentication failed: " + e.getMessage());
             }
-            // Clear context just in case, though it should be if auth failed
-            SecurityContextHolder.clearContext();
-            // Proceed the chain. If this was a bad static token, the request will ultimately fail
-            // with a 401 from the main security exception handling if no other auth succeeds (e.g. JWT).
-            filterChain.doFilter(request, response);
+            SecurityContextHolder.clearContext(); // Ensure context is clear on failure
+            // Authentication failed. The exception will propagate, and Spring Security's
+            // ExceptionTranslationFilter will eventually handle it using the configured AuthenticationEntryPoint
+            // (HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED) for scimFilterChain).
+            // We re-throw or let it propagate. For this filter, it's better to let it propagate
+            // so Spring's machinery handles the response.
+            // Or, you could call a failureHandler here, but HttpStatusEntryPoint is simpler for just a 401.
+            // For now, let the exception propagate to be handled by Spring Security's main mechanisms.
+            // The filter chain won't proceed further for this request in an authenticated state.
+            // The framework will handle sending the 401.
+            
+            // To be explicit that this filter caused the failure that leads to entry point:
+            // response.sendError(HttpStatus.UNAUTHORIZED.value(), e.getMessage()); // This is one way
+            // Or rely on the configured AuthenticationEntryPoint for the chain:
+            throw e; // Re-throw the exception to be caught by ExceptionTranslationFilter
         }
     }
 }
