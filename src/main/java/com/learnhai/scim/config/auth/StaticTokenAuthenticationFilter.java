@@ -27,15 +27,22 @@ public class StaticTokenAuthenticationFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
 
-        // Only process if no authentication is already in the context
-        if (SecurityContextHolder.getContext().getAuthentication() != null &&
-            SecurityContextHolder.getContext().getAuthentication().isAuthenticated()) {
+        // Corrected Check: Only skip if already properly authenticated (not anonymous)
+        Authentication existingAuthentication = SecurityContextHolder.getContext().getAuthentication();
+        if (existingAuthentication != null && existingAuthentication.isAuthenticated() &&
+            !(existingAuthentication instanceof org.springframework.security.authentication.AnonymousAuthenticationToken)) { // Be explicit
             if (logger.isDebugEnabled()) {
-                logger.debug("SecurityContext already contains an authentication object. Skipping StaticTokenAuthenticationFilter.");
+                logger.debug("SecurityContext already contains a non-anonymous, authenticated object ("+ existingAuthentication.getClass().getSimpleName() +"). Skipping StaticTokenAuthenticationFilter.");
             }
             filterChain.doFilter(request, response);
             return;
         }
+        // If existingAuthentication is null, or not authenticated, or is Anonymous, proceed with filter logic.
+        if (logger.isDebugEnabled() && existingAuthentication != null) {
+            logger.debug("Existing authentication is: " + existingAuthentication.getClass().getSimpleName() + 
+                         ", isAuthenticated: " + existingAuthentication.isAuthenticated() + ". Proceeding with StaticTokenAuthenticationFilter logic.");
+        }
+
 
         final String header = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (header == null || !header.toLowerCase().startsWith("bearer ")) {
