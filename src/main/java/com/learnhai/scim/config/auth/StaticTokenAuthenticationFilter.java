@@ -63,9 +63,18 @@ public class StaticTokenAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.setContext(context);
 
             if (logger.isDebugEnabled()) {
-                logger.debug("Static token authentication successful. Principal: " + authResult.getPrincipal());
+                logger.debug("Static token authentication successful. Principal: " + authResult.getPrincipal() + 
+                            ". SecurityContextHolder NOW CONTAINS: " + SecurityContextHolder.getContext().getAuthentication());
             }
-            filterChain.doFilter(request, response); // Proceed with authenticated request
+
+            // Call the next filter in the chain
+            filterChain.doFilter(request, response);
+
+            // Log AFTER the rest of the chain has processed (if it returns here)
+            if (logger.isDebugEnabled()) {
+                logger.debug("StaticTokenAuthenticationFilter: AFTER filterChain.doFilter. Response status: " + response.getStatus() +
+                            ". SecurityContextHolder NOW CONTAINS: " + SecurityContextHolder.getContext().getAuthentication());
+            }
 
         } catch (AuthenticationException e) {
             // Static token authentication failed (e.g., token not found in config or malformed for static needs)
