@@ -112,7 +112,7 @@ KEYCLOAK_ADMIN_CLIENT_SECRET=REPLACE_WITH_A_VERY_STRONG_SECRET # Client Secret f
 
 We will create NGINX server blocks to route traffic to our Docker containers and use Certbot to secure them with free, trusted SSL certificates from Let's Encrypt.
 
-### a. Create NGINX Configuration Files
+-   Create NGINX Configuration Files
 
 Create a configuration file for Keycloak:
 
