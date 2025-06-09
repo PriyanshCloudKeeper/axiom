@@ -114,87 +114,87 @@ We will create NGINX server blocks to route traffic to our Docker containers and
 
 -   Create NGINX Configuration Files
 
-Create a configuration file for Keycloak:
-
-
-```bash
-sudo nano /etc/nginx/sites-available/keycloak.yourdomain.com
-```
-
-Paste this configuration (replace keycloak.yourdomain.com with your actual domain, and replace yourip with your actual instance ip):
-
-```nginx
-server {
+    Create a configuration file for Keycloak:
+    
+    
+    ```bash
+    sudo nano /etc/nginx/sites-available/keycloak.yourdomain.com
+    ```
+    
+    Paste this configuration (replace keycloak.yourdomain.com with your actual domain, and replace yourip with your actual instance ip):
+    
+    ```nginx
+    server {
+            listen 80;
+            server_name keycloak.yourdomain.com www.keycloak.yourdomain.com;
+            rewrite ^https://keycloak.yourdomain.com permanent;
+    }
+    server {
+            listen 443 ssl;
+            server_name keycloak.yourdomain.com www.keycloak.yourdomain.com;
+    
+            ssl_certificate /etc/letsencrypt/live/keycloak.yourdomain.com/fullchain.pem;
+            ssl_certificate_key /etc/letsencrypt/live/keycloak.yourdomain.com/privkey.pem;
+            ssl_session_cache builtin:1000 shared:ssl:10m;
+            ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
+            ssl_ciphers HIGH:!aNULL:!eNULL:!EXPORT:!CAMELLIA:!DES:!MD5:!PSK:!RC4;
+            ssl_prefer_server_ciphers on;
+            location / {
+                    proxy_set_header        Host                    $host;
+                    proxy_set_header        X-Real-IP               $remote_addr;
+                    proxy_set_header        X-Forwarded-For         $proxy_add_x_forwarded_for;
+                    proxy_set_header        X-Forwarded-Proto       $scheme;
+                    proxy_pass http://yourip:8081;
+            }
+    }
+    ```  
+    
+    Create a configuration file for the SCIM bridge:
+    ```bash
+    sudo nano /etc/nginx/sites-available/scim.yourdomain.com
+    ```
+    
+    Paste this configuration (replace scim.yourdomain.com with your actual domain):
+    ```nginx
+    server {
         listen 80;
-        server_name keycloak.yourdomain.com www.keycloak.yourdomain.com;
-        rewrite ^https://keycloak.yourdomain.com permanent;
-}
-server {
-        listen 443 ssl;
-        server_name keycloak.yourdomain.com www.keycloak.yourdomain.com;
-
-        ssl_certificate /etc/letsencrypt/live/keycloak.yourdomain.com/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/keycloak.yourdomain.com/privkey.pem;
-        ssl_session_cache builtin:1000 shared:ssl:10m;
-        ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
-        ssl_ciphers HIGH:!aNULL:!eNULL:!EXPORT:!CAMELLIA:!DES:!MD5:!PSK:!RC4;
-        ssl_prefer_server_ciphers on;
+        server_name scim.yourdomain.com;
+    
         location / {
-                proxy_set_header        Host                    $host;
-                proxy_set_header        X-Real-IP               $remote_addr;
-                proxy_set_header        X-Forwarded-For         $proxy_add_x_forwarded_for;
-                proxy_set_header        X-Forwarded-Proto       $scheme;
-                proxy_pass http://yourip:8081;
+            return 301 https://$host$request_uri;
         }
-}
-```  
-
-Create a configuration file for the SCIM bridge:
-```bash
-sudo nano /etc/nginx/sites-available/scim.yourdomain.com
-```
-
-Paste this configuration (replace scim.yourdomain.com with your actual domain):
-```nginx
-server {
-    listen 80;
-    server_name scim.yourdomain.com;
-
-    location / {
-        return 301 https://$host$request_uri;
     }
-}
-
-server {
-    listen 443 ssl http2;
-    server_name scim.yourdomain.com;
-
-    ssl_certificate /etc/letsencrypt/live/scim.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/scim.yourdomain.com/privkey.pem;
-
-    ssl_session_timeout 1d;
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_tickets off;
-
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers off;
-
-    location / {
-        proxy_set_header        Host $host;
-        proxy_set_header        X-Real-IP $remote_addr;
-        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header        X-Forwarded-Proto $scheme;
-        proxy_set_header        X-Forwarded-Host $host;
-        proxy_set_header        X-Forwarded-Port $server_port;
-
-        # Your scim-bridge Docker container is mapped to host port 8082
-        proxy_pass              http://localhost:8082;
+    
+    server {
+        listen 443 ssl http2;
+        server_name scim.yourdomain.com;
+    
+        ssl_certificate /etc/letsencrypt/live/scim.yourdomain.com/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/scim.yourdomain.com/privkey.pem;
+    
+        ssl_session_timeout 1d;
+        ssl_session_cache shared:SSL:10m;
+        ssl_session_tickets off;
+    
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_prefer_server_ciphers off;
+    
+        location / {
+            proxy_set_header        Host $host;
+            proxy_set_header        X-Real-IP $remote_addr;
+            proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header        X-Forwarded-Proto $scheme;
+            proxy_set_header        X-Forwarded-Host $host;
+            proxy_set_header        X-Forwarded-Port $server_port;
+    
+            # Your scim-bridge Docker container is mapped to host port 8082
+            proxy_pass              http://localhost:8082;
+        }
+    
+        access_log /var/log/nginx/scim.yourdomain.com.access.log;
+        error_log /var/log/nginx/scim.yourdomain.com.error.log;
     }
-
-    access_log /var/log/nginx/scim.yourdomain.com.access.log;
-    error_log /var/log/nginx/scim.yourdomain.com.error.log;
-}
-```
+    ```
 
 ### b. Enable the Sites
 
