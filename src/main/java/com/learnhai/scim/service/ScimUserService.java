@@ -63,6 +63,7 @@ public class ScimUserService {
         //     kcUserToCreate.setCredentials(Collections.singletonList(credential));
         //     log.debug("Password provided for user '{}', adding to credentials.", scimUser.getUserName());
         // }
+
         log.warn("DEBUG: Password processing is TEMPORARILY SKIPPED in ScimUserService.createUser");
 
         String userId = keycloakService.createUser(kcUserToCreate);
@@ -155,15 +156,12 @@ public class ScimUserService {
             Object value = operation.get("value");
             log.info("PATCH Processing op: '{}', path: '{}', value: '{}'", op, path, value);
 
-            if ("replace".equalsIgnoreCase(op) || "add".equalsIgnoreCase(op)) { // 'add' is often treated like 'replace' for single-valued attributes
+            if ("replace".equalsIgnoreCase(op) || "add".equalsIgnoreCase(op)) {
                 if (path == null || path.isEmpty()) {
-                    // Handling SCIM PATCH where path is null, and value is a partial resource
-                    // This is common for some IdPs like Okta when updating top-level attributes like 'active'.
                     if (value instanceof Map) {
                         @SuppressWarnings("unchecked")
                         Map<String, Object> valueMap = (Map<String, Object>) value;
                         
-                        // Specifically check for 'active'
                         if (valueMap.containsKey("active")) {
                             Object activeValueObj = valueMap.get("active");
                             if (activeValueObj instanceof Boolean) {
@@ -180,8 +178,6 @@ public class ScimUserService {
                                 throw new ScimException("Invalid value for 'active' in PATCH operation. Boolean expected.", HttpStatus.BAD_REQUEST, "invalidValue");
                             }
                         }
-                        // Add similar blocks here if Okta sends other attributes (e.g., displayName)
-                        // in this path=null, value={...} format for 'replace' ops
                         if (valueMap.containsKey("displayName")) {
                             Object displayNameValue = valueMap.get("displayName");
                             if (displayNameValue instanceof String || displayNameValue == null) {
@@ -197,8 +193,7 @@ public class ScimUserService {
                                 log.warn("PATCH: 'displayName' in root value object was not a String or null.");
                             }
                         }
-                        // ... handle other attributes from valueMap if necessary ...
-                    } else if (op.equalsIgnoreCase("replace")) { // Only if op is replace and value is not a map
+                    } else if (op.equalsIgnoreCase("replace")) {
                         log.warn("PATCH User ID: {}: For op 'replace' with null/empty path, expected 'value' to be a Map representing a partial resource. Value was: {}", id, value);
                     }
                 } else if ("active".equalsIgnoreCase(path)) {
@@ -214,11 +209,9 @@ public class ScimUserService {
                         throw new ScimException("Invalid value for 'active'. Boolean expected.", HttpStatus.BAD_REQUEST, "invalidValue");
                     }
                 } else if (path.equalsIgnoreCase("userName")) {
-                    // ... (your existing userName logic) ...
                     if (value instanceof String && StringUtils.isNotBlank((String)value)) {
                         String newUsername = (String) value;
                         if (!newUsername.equalsIgnoreCase(existingKcUser.getUsername())) {
-                            // ... (conflict check) ...
                             existingKcUser.setUsername(newUsername);
                             coreUserAttributesModified = true;
                             log.info("PATCH: 'userName' changed to {}. coreUserAttributesModified set to true.", newUsername);
@@ -227,26 +220,18 @@ public class ScimUserService {
                         throw new ScimException("Invalid value for 'userName'. Non-empty String expected.", HttpStatus.BAD_REQUEST, "invalidValue");
                     }
                 } else if ("groups".equalsIgnoreCase(path) && "add".equalsIgnoreCase(op)) {
-                    // ... (your existing groups add logic) ...
                 }
-                // Handle other specific paths like emails (Keycloak email is single-valued from SCIM primary)
                 else if (path.toLowerCase().startsWith("emails[") && path.toLowerCase().contains("value")) {
-                    // This is a more complex path, for now, let's assume Okta sends primary email updates
-                    // as a top-level email if it uses path=null, or a direct path for email value.
-                    // If Okta sends complex PATCH for emails, this needs more parsing.
-                    // For simplicity, if SCIM primary email is to be updated:
                     if (value instanceof String) {
                         String newEmail = (String) value;
                         if (!StringUtils.equals(existingKcUser.getEmail(), newEmail)) {
-                            // ... (conflict check for email) ...
                             existingKcUser.setEmail(newEmail);
-                            existingKcUser.setEmailVerified(true); // Or based on SCIM input
+                            existingKcUser.setEmailVerified(true);
                             coreUserAttributesModified = true;
                             log.info("PATCH: 'email' (from path like emails[...].value) changed to {}.", newEmail);
                         }
                     }
                 }
-                // Generic attribute handling for other paths (like enterprise extensions)
                 else {
                     String attributeName = path;
                     if (path.startsWith(ScimUser.SCHEMA_ENTERPRISE_USER + ":")) {
@@ -254,11 +239,9 @@ public class ScimUserService {
                     }
 
                     if (value instanceof String) {
-                        // ... (your existing generic string attribute update logic) ...
                         attributesToModify.put(attributeName, Collections.singletonList((String)value));
                         coreUserAttributesModified = true;
                     } else if (value == null && "replace".equalsIgnoreCase(op)) {
-                        // ... (your existing generic attribute removal logic) ...
                         if(attributesToModify.remove(attributeName) != null) {
                         coreUserAttributesModified = true;
                         }
@@ -266,15 +249,12 @@ public class ScimUserService {
                 }
             } else if ("remove".equalsIgnoreCase(op)) {
                 if (path.toLowerCase().startsWith("groups[value eq ")) {
-                    // ... (your existing groups remove logic) ...
                 }
-                // Generic attribute removal
                 else {
                     String attributeNameToRemove = path;
                     if (path.startsWith(ScimUser.SCHEMA_ENTERPRISE_USER + ":")) {
                         attributeNameToRemove = path.substring(path.lastIndexOf(":") + 1);
                     }
-                    // ... (your existing generic attribute removal logic for 'remove' op) ...
                     if (attributesToModify.remove(attributeNameToRemove) != null) {
                         coreUserAttributesModified = true;
                         log.info("PATCH: Attribute '{}' removed via op 'remove'. coreUserAttributesModified true.", attributeNameToRemove);
@@ -283,7 +263,7 @@ public class ScimUserService {
                     }
                 }
             }
-        } // End of operations loop
+        }
 
         log.info("PATCH ENDLOOP User ID: {}, coreUserAttributesModified flag: {}, Attributes on existingKcUser: {}",
                 id, coreUserAttributesModified, existingKcUser.getAttributes());
@@ -300,7 +280,6 @@ public class ScimUserService {
         return userMapper.toScimUser(patchedKcUser);
     }
 
-    // Helper method if you don't have it elsewhere in the class
     private String getFirstAttribute(Map<String, List<String>> attributes, String key) {
         if (attributes != null) {
             List<String> values = attributes.get(key);
@@ -311,9 +290,8 @@ public class ScimUserService {
         return null;
     }
 
-    // --- ENSURE THESE METHODS ARE PRESENT ---
     public void deleteUser(String id) {
-        keycloakService.getUserById(id) // Check if user exists before attempting delete
+        keycloakService.getUserById(id)
             .orElseThrow(() -> new ScimException("User not found with id: " + id, HttpStatus.NOT_FOUND, "noTarget"));
         keycloakService.deleteUser(id);
         log.info("Successfully deleted user from Keycloak with ID: {}", id);
@@ -332,7 +310,6 @@ public class ScimUserService {
             } else if (lowerFilter.startsWith("displayname co ")) { 
                  searchString = filter.substring("displayname co ".length()).replace("\"", "").trim();
             }
-            // Add more sophisticated filter parsing here if needed
             log.debug("Applying search filter to Keycloak: {}", searchString);
         }
 
@@ -352,5 +329,4 @@ public class ScimUserService {
         response.put("Resources", scimUsers);
         return response;
     }
-    // --- END OF REQUIRED METHODS ---
 }

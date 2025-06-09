@@ -109,20 +109,19 @@ public class ScimUser extends ScimResource {
     @NoArgsConstructor
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class GroupReference {
-        private String value; // Group ID
-        private String display; // Group Display Name
+        private String value;
+        private String display;
         @JsonProperty("$ref")
-        private String ref; // SCIM URI for the group
-        private String type; // e.g., "direct"
+        private String ref;
+        private String type;
     }
-    // End NEW INNER CLASS
 
      @Override
      public Meta getMeta() {
          if (super.getMeta() == null) {
              super.setMeta(new Meta());
          }
-         // Ensure resourceType is set for User if it wasn't already
+
          if (super.getMeta().getResourceType() == null) {
               super.getMeta().setResourceType("User");
          }

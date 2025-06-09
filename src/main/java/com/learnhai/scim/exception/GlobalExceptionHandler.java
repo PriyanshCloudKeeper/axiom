@@ -24,13 +24,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleScimException(ScimException ex, WebRequest request) {
         log.error("SCIM Exception: Status={}, Type={}, Message={}", ex.getStatus(), ex.getScimType(), ex.getMessage(), ex);
         String scimType = ex.getScimType();
-        if (scimType == null) { // If ScimException was created without a specific scimType
+        if (scimType == null) {
             scimType = determineScimTypeFromStatus(ex.getStatus());
         }
         Map<String, Object> errorBody = createScimErrorBody(
                 ex.getMessage(),
                 ex.getStatus().value(),
-                scimType // Use the determined or provided scimType
+                scimType
         );
         return new ResponseEntity<>(errorBody, ex.getStatus());
     }
@@ -46,7 +46,6 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorBody, HttpStatus.BAD_REQUEST);
     }
     
-    // Fallback for other RuntimeExceptions
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, Object>> handleGenericRuntimeException(RuntimeException ex, WebRequest request) {
         log.error("Unhandled Runtime Exception: {}", ex.getMessage(), ex);
@@ -58,7 +57,6 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorBody, HttpStatus.INTERNAL_SERVER_ERROR);
     }
     
-    // Catch-all for any other exception
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleAllExceptions(Exception ex, WebRequest request) {
         log.error("Generic Exception: {}", ex.getMessage(), ex);
@@ -70,7 +68,6 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorBody, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-
     private Map<String, Object> createScimErrorBody(String detail, int status, String scimType) {
         Map<String, Object> error = new LinkedHashMap<>();
         error.put("schemas", Collections.singletonList(SCHEMA_SCIM_ERROR));
@@ -78,19 +75,19 @@ public class GlobalExceptionHandler {
             error.put("scimType", scimType);
         }
         error.put("detail", detail);
-        error.put("status", String.valueOf(status)); // SCIM spec expects status as string
+        error.put("status", String.valueOf(status));
         return error;
     }
 
     private String determineScimTypeFromStatus(HttpStatus status) {
         return switch (status) {
             case BAD_REQUEST -> "invalidSyntax";
-            case UNAUTHORIZED -> "invalidCredentials"; // Or based on specific auth failure
-            case FORBIDDEN -> "mutability"; // Or noTarget, sensitive
+            case UNAUTHORIZED -> "invalidCredentials";
+            case FORBIDDEN -> "mutability";
             case NOT_FOUND -> "noTarget";
-            case CONFLICT -> "uniqueness"; // Or tooMany
+            case CONFLICT -> "uniqueness";
             case INTERNAL_SERVER_ERROR -> "internalServerError";
-            default -> null; // Let it be omitted if no clear mapping
+            default -> null;
         };
     }
 }

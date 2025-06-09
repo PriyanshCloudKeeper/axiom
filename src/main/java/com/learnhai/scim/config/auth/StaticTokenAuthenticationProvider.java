@@ -29,9 +29,6 @@ public class StaticTokenAuthenticationProvider implements AuthenticationProvider
                 .findFirst();
 
         if (matchedToken.isPresent()) {
-            // Token matches, create an authenticated token
-            // The principal can be the idpName for identification/auditing
-            // Add a generic authority, or more specific ones if needed
             return new StaticBearerTokenAuthenticationToken(
                     matchedToken.get().getIdpName(),
                     presentedToken,
@@ -44,12 +41,9 @@ public class StaticTokenAuthenticationProvider implements AuthenticationProvider
 
     @Override
     public boolean supports(Class<?> authentication) {
-        // This provider supports StaticBearerTokenAuthenticationToken
         return StaticBearerTokenAuthenticationToken.class.isAssignableFrom(authentication);
     }
 
-    // Basic time-constant comparison to mitigate timing attacks.
-    // For very high security, consider using a dedicated library function if available.
     private boolean secureCompare(String configuredToken, String presentedToken) {
         if (configuredToken == null || presentedToken == null) {
             return false;

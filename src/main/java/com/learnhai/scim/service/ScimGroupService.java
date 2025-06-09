@@ -162,7 +162,6 @@ public class ScimGroupService {
                     if (value instanceof String && StringUtils.isNotBlank((String) value)) {
                         String newDisplayName = (String) value;
                         if (!newDisplayName.equals(existingKcGroup.getName())) {
-                            // ... (conflict check for displayName) ...
                             existingKcGroup.setName(newDisplayName);
                             groupAttributesModified = true;
                         }
@@ -170,7 +169,6 @@ public class ScimGroupService {
                         throw new ScimException("Invalid value for 'displayName'. Non-empty String expected.", HttpStatus.BAD_REQUEST, "invalidValue");
                     }
                 } else if ("members".equalsIgnoreCase(path)) {
-                    // --- NEW LOGIC FOR FULL MEMBER REPLACEMENT ---
                     log.info("PATCH GROUP ID: {}: Handling 'op: replace, path: members'. Value: {}", id, value);
                     Set<String> desiredMemberIds = new HashSet<>();
                     if (value instanceof List) {
@@ -179,16 +177,11 @@ public class ScimGroupService {
                         for (Map<String, Object> memberMap : membersToSet) {
                             String memberValue = (String) memberMap.get("value");
                             if (StringUtils.isNotBlank(memberValue)) {
-                                // Optionally validate member type if provided:
-                                // String memberType = (String) memberMap.get("type");
-                                // if (memberType == null || "User".equalsIgnoreCase(memberType)) {
                                 desiredMemberIds.add(memberValue);
-                                // } else { log.warn("Skipping non-User member type: {}", memberType); }
                             }
                         }
-                    } else if (value == null) { // op: replace, path: members, value: null -> means clear all members
+                    } else if (value == null) {
                         log.info("PATCH GROUP ID: {}: Received 'op: replace, path: members' with null value. Clearing all members.", id);
-                        // desiredMemberIds remains empty, correctly leading to all current members being removed.
                     } else {
                         log.warn("PATCH GROUP ID: {}: For 'op: replace, path: members', 'value' was not a List or null. Value: {}", id, value);
                         throw new ScimException("Invalid value for 'members' in replace operation. Array of member objects or null expected.", HttpStatus.BAD_REQUEST, "invalidValue");
@@ -198,7 +191,6 @@ public class ScimGroupService {
                     Set<String> currentKcMemberIds = currentKcMembers.stream().map(UserRepresentation::getId).collect(Collectors.toSet());
                     log.info("PATCH GROUP ID: {}: Current members in Keycloak: {}. Desired members from SCIM: {}", id, currentKcMemberIds.size(), desiredMemberIds.size());
 
-                    // Members to remove: in currentKcMemberIds but NOT in desiredMemberIds
                     Set<String> membersToRemove = new HashSet<>(currentKcMemberIds);
                     membersToRemove.removeAll(desiredMemberIds);
                     for (String memberIdToRemove : membersToRemove) {
@@ -206,11 +198,9 @@ public class ScimGroupService {
                         keycloakService.removeUserFromGroup(memberIdToRemove, id);
                     }
 
-                    // Members to add: in desiredMemberIds but NOT in currentKcMemberIds
                     Set<String> membersToAdd = new HashSet<>(desiredMemberIds);
                     membersToAdd.removeAll(currentKcMemberIds);
                     for (String memberIdToAdd : membersToAdd) {
-                        // It's good practice to verify the user exists before adding to group
                         keycloakService.getUserById(memberIdToAdd)
                                 .orElseThrow(() -> {
                                     log.error("PATCH GROUP ID: {}: User member with ID {} not found for adding to group.", id, memberIdToAdd);
@@ -219,16 +209,12 @@ public class ScimGroupService {
                         log.info("PATCH GROUP ID: {}: Replacing members - adding user {}", id, memberIdToAdd);
                         keycloakService.addUserToGroup(memberIdToAdd, id);
                     }
-                    // Member changes are done directly, no need to set groupAttributesModified = true;
-                    // unless other attributes like displayName were also part of this PATCH.
+
                     log.info("PATCH GROUP ID: {}: Finished processing 'op: replace, path: members'.", id);
                 }
-                // Note: Your original code had a path:null check here for groups, removed as it was for user patch.
-                // If Okta sends group attribute updates with path:null, value:{...}, add similar logic as in ScimUserService.
-                
+
             } else if ("add".equalsIgnoreCase(op)) {
                 if ("members".equalsIgnoreCase(path)) {
-                    // ... your existing 'add' members logic from before (ensure it's robust) ...
                     if (value instanceof List) {
                         @SuppressWarnings("unchecked")
                         List<Map<String, Object>> membersOpAdd = (List<Map<String, Object>>) value;
@@ -245,14 +231,11 @@ public class ScimGroupService {
                 }
             } else if ("remove".equalsIgnoreCase(op)) {
                 if (path != null && path.toLowerCase().startsWith("members[value eq ")) {
-                    // ... your existing 'remove' members by value logic ...
                     String userIdToRemove = path.substring(path.toLowerCase().indexOf("\"") + 1, path.toLowerCase().lastIndexOf("\""));
                     if (StringUtils.isNotBlank(userIdToRemove)) {
                         keycloakService.removeUserFromGroup(userIdToRemove, id);
                     }
                 } else if ("members".equalsIgnoreCase(path) && value == null) {
-                    // SCIM spec: "If the "value" parameter is omitted, the target location is REMOVED."
-                    // This means remove ALL members.
                     log.info("PATCH GROUP ID: {}: Handling 'op: remove, path: members' (no value). Removing all members.", id);
                     List<UserRepresentation> currentKcMembers = keycloakService.getGroupMembers(id, 0, Integer.MAX_VALUE);
                     for (UserRepresentation member : currentKcMembers) {
@@ -260,10 +243,9 @@ public class ScimGroupService {
                     }
                 } else {
                     log.warn("PATCH GROUP ID: {}: 'op: remove' for path '{}' not fully supported or value malformed.", id, path);
-                    // Or throw ScimException if it's an invalid remove operation
                 }
             }
-        } // End of operations loop
+        }
 
         if (groupAttributesModified) {
             log.info("PATCH GROUP ID: {}: Group attributes (like displayName) were modified, calling keycloakService.updateGroup.", id);
@@ -274,7 +256,7 @@ public class ScimGroupService {
 
         GroupRepresentation patchedKcGroup = keycloakService.getGroupById(id)
                 .orElseThrow(() -> new ScimException("Failed to retrieve patched group: " + id, HttpStatus.INTERNAL_SERVER_ERROR));
-        List<UserRepresentation> members = keycloakService.getGroupMembers(id, 0, 200); // Fetch fresh members
+        List<UserRepresentation> members = keycloakService.getGroupMembers(id, 0, 200);
         log.info("PATCH GROUP ID: {}: Fetched group with {} members after all patch operations for response.", id, members != null ? members.size() : 0);
         return groupMapper.toScimGroup(patchedKcGroup, members);
     }
@@ -299,7 +281,7 @@ public class ScimGroupService {
         List<GroupRepresentation> kcGroups = keycloakService.getGroups(firstResult, count, searchFilter);
         List<ScimGroup> scimGroups = new ArrayList<>();
         for(GroupRepresentation kcGroup : kcGroups) {
-            List<UserRepresentation> members = keycloakService.getGroupMembers(kcGroup.getId(), 0, 10); // Fetch a few members for preview
+            List<UserRepresentation> members = keycloakService.getGroupMembers(kcGroup.getId(), 0, 10);
             scimGroups.add(groupMapper.toScimGroup(kcGroup, members));
         }
         

@@ -15,9 +15,9 @@ spring:
 
 logging:
   level:
-    com.learnhai.scim: DEBUG  # Set your desired level (DEBUG, INFO, etc.)
-    org.springframework.security: INFO # Or DEBUG
-    org.springframework.web: INFO     # Or DEBUG
+    com.learnhai.scim: DEBUG
+    org.springframework.security: INFO
+    org.springframework.web: INFO 
     org.keycloak.admin.client: INFO
 
 keycloak:
@@ -36,13 +36,12 @@ management:
     health:
       show-details: when-authorized
 
-# SCIM Configuration
 scim:
   base-url: ${SCIM_BASE_URL:http://localhost:8080}
   bridge:
     auth:
       static-tokens:
-        - idp-name: "idp_okta" # An identifier for the IdP
+        - idp-name: "idp_okta"
           token: "dobJLJsJ7X7VQwcNNtOaZtc6Ghc311l5q2E3RUhoUh35y20SO0gYEXHsWJvREpFT"
         - idp-name: "idp_aws"
           token: "bCBTLjqCMmKuCyK3drXnazSAmDh8TForCKXAHVgjXoqdfBHQ40aQ8cULOJlSkS2bgPmUSUphVsnIzEK9"

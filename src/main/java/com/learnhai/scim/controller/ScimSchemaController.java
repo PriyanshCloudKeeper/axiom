@@ -21,7 +21,6 @@ public class ScimSchemaController {
     private static final String SCHEMA_LIST_RESPONSE = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
     private static final String SCHEMA_RESOURCE_TYPE = "urn:ietf:params:scim:schemas:core:2.0:ResourceType";
     private static final String SCHEMA_SERVICE_PROVIDER_CONFIG = "urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig";
-    // private static final String SCHEMA_SCHEMA_META = "urn:ietf:params:scim:schemas:meta:2.0:Schema"; // Not directly used as a constant value in responses here
 
 
     @GetMapping("/ServiceProviderConfig")
@@ -170,7 +169,7 @@ public class ScimSchemaController {
         schema.put("id", ScimUser.SCHEMA_CORE_USER);
         schema.put("name", "User");
         schema.put("description", "Core User Account");
-        schema.put("attributes", getUserAttributes()); // This will now include 'groups'
+        schema.put("attributes", getUserAttributes());
         Map<String,Object> meta = new LinkedHashMap<>();
         meta.put("resourceType", "Schema");
         meta.put("location", scimBaseUrl + "/scim/v2/Schemas/" + ScimUser.SCHEMA_CORE_USER);
@@ -239,21 +238,19 @@ public class ScimSchemaController {
         )));
         attributes.add(createAttribute("password", "string", false, false, "none", "writeOnly", "never", "The User's password. This attribute is write-only, and will never be returned in a response."));
         
-        // --- ENSURE THIS 'groups' ATTRIBUTE DEFINITION IS PRESENT ---
         attributes.add(createComplexAttribute(
-                "groups",       // name
-                true,           // multiValued
-                "readOnly",     // mutability (typically readOnly for GET, PATCH logic handles writes)
+                "groups",     
+                true,          
+                "readOnly",    
                 "default",
-                "A list of groups to which the user belongs.", // description
-                List.of(        // subAttributes
+                "A list of groups to which the user belongs.",
+                List.of(
                         createAttribute("value", "string", false, false, "none", "readOnly", "default", "The identifier of the User's group."),
                         createAttribute("display", "string", false, false, "none", "readOnly", "default", "A human-readable name for the User's group."),
                         createAttribute("$ref", "reference", false, false, "none", "readOnly", "default", "The URI of the corresponding 'Group' resource."),
                         createAttribute("type", "string", false, false, "none", "readOnly", "default", "A label indicating the type of group membership, e.g., 'direct'.")
                 )
         ));
-        // --- END OF 'groups' ATTRIBUTE ---
         return attributes;
     }
 

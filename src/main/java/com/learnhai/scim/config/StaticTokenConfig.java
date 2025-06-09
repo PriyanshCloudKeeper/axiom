@@ -16,7 +16,7 @@ public class StaticTokenConfig {
 
     @Data
     public static class StaticClientToken {
-        private String idpName; // e.g., "okta_prod", "azure_dev_tenant"
-        private String token;   // The actual long-lived static token string
+        private String idpName;
+        private String token;
     }
 }

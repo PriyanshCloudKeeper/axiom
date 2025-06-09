@@ -58,9 +58,6 @@ public class ScimUserController {
     public ResponseEntity<ScimUser> replaceUser(@PathVariable String id,
                                                 @Valid @RequestBody ScimUser scimUser) {
         log.info("SCIM replaceUser (PUT) request received for ID: {}", id);
-        // SCIM spec says PUT should include the id in the body matching the path id, or it's an error.
-        // For simplicity, we're not strictly enforcing that here, relying on path id.
-        // Also, SCIM PUT is a full replace. If attributes are missing, they should be cleared.
         ScimUser updatedUser = scimUserService.replaceUser(id, scimUser);
         log.info("SCIM user updated with ID: {}", id);
         return ResponseEntity.ok(updatedUser);
@@ -69,8 +66,6 @@ public class ScimUserController {
     @PatchMapping("/{id}")
     public ResponseEntity<ScimUser> patchUser(@PathVariable String id,
                                               @RequestBody Map<String, Object> patchRequest) {
-        // SCIM Patch request body should be like:
-        // { "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [ ... ] }
         log.info("SCIM patchUser request received for ID: {}", id);
         ScimUser updatedUser = scimUserService.patchUser(id, patchRequest);
          log.info("SCIM user patched with ID: {}", id);
@@ -94,7 +89,7 @@ public class ScimUserController {
             @RequestParam(name = "count", defaultValue = "100") int count) {
         log.info("SCIM findUsers request received. Filter: '{}', StartIndex: {}, Count: {}", filter, startIndex, count);
         // SCIM specifies max results can be requested by client, server can cap.
-        int effectiveCount = Math.min(count, 200); // Example server-side cap
+        int effectiveCount = Math.min(count, 200);
 
         Map<String, Object> listResponse = scimUserService.getUsers(startIndex, effectiveCount, filter);
         return ResponseEntity.ok(listResponse);

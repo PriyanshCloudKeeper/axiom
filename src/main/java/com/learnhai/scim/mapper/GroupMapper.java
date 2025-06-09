@@ -3,7 +3,7 @@ package com.learnhai.scim.mapper;
 import com.learnhai.scim.model.scim.ScimGroup;
 import com.learnhai.scim.model.scim.ScimUser;
 import org.keycloak.representations.idm.GroupRepresentation;
-import org.keycloak.representations.idm.UserRepresentation; // For mapping members
+import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.apache.commons.lang3.StringUtils;
@@ -29,14 +29,13 @@ public class GroupMapper {
         GroupRepresentation kcGroup = (existingKcGroup != null) ? existingKcGroup : new GroupRepresentation();
 
         if (StringUtils.isNotBlank(scimGroup.getDisplayName())) {
-            kcGroup.setName(scimGroup.getDisplayName()); // SCIM displayName maps to Keycloak group name
+            kcGroup.setName(scimGroup.getDisplayName());
         }
 
         Map<String, List<String>> attributes = kcGroup.getAttributes() == null ? new HashMap<>() : new HashMap<>(kcGroup.getAttributes());
         if (StringUtils.isNotBlank(scimGroup.getExternalId())) {
             attributes.put("externalId", List.of(scimGroup.getExternalId()));
         }
-        // Add other custom attributes if needed
 
         if (!attributes.isEmpty()) {
             kcGroup.setAttributes(attributes);
@@ -58,24 +57,21 @@ public class GroupMapper {
             List<ScimGroup.Member> scimMembers = groupMembers.stream().map(kcUser -> {
                 ScimGroup.Member member = new ScimGroup.Member();
                 member.setValue(kcUser.getId());
-                member.setDisplay(kcUser.getUsername()); // Or another display attribute
+                member.setDisplay(kcUser.getUsername());
                 member.setType("User");
                 member.setRef(scimBaseUrl + "/scim/v2/Users/" + kcUser.getId());
                 return member;
             }).collect(Collectors.toList());
             scimGroup.setMembers(scimMembers);
         } else {
-            scimGroup.setMembers(new ArrayList<>()); // Ensure members list is present even if empty
+            scimGroup.setMembers(new ArrayList<>());
         }
 
-        ScimUser.Meta meta = new ScimUser.Meta(); // Re-use Meta structure
+        ScimUser.Meta meta = new ScimUser.Meta();
         meta.setResourceType("Group");
         meta.setLocation(scimBaseUrl + "/scim/v2/Groups/" + kcGroup.getId());
-        // Keycloak GroupRepresentation doesn't have created/lastModified timestamps directly
-        // If you store them as attributes, map them here.
-        meta.setCreated(Instant.now()); // Placeholder
-        meta.setLastModified(Instant.now()); // Placeholder
-        // meta.setVersion(...); // ETag - Placeholder
+        meta.setCreated(Instant.now());
+        meta.setLastModified(Instant.now());
         scimGroup.setMeta(meta);
 
         return scimGroup;

@@ -4,7 +4,7 @@ import org.springframework.http.HttpStatus;
 
 public class ScimException extends RuntimeException {
     private final HttpStatus status;
-    private final String scimType; // SCIM error type e.g., "invalidValue", "uniqueness", "tooMany"
+    private final String scimType;
 
     public ScimException(String message, HttpStatus status) {
         this(message, status, null, null);

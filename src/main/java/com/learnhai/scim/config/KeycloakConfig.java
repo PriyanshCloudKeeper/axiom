@@ -3,7 +3,6 @@ package com.learnhai.scim.config;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
-// Use the concrete implementation of ResteasyClientBuilder
 import org.jboss.resteasy.client.jaxrs.internal.ResteasyClientBuilderImpl;
 import org.jboss.resteasy.plugins.providers.jackson.ResteasyJackson2Provider;
 import org.keycloak.admin.client.Keycloak;
@@ -35,12 +34,9 @@ public class KeycloakConfig {
         ResteasyJackson2Provider jacksonProvider = new ResteasyJackson2Provider();
         jacksonProvider.setMapper(objectMapper);
 
-        // Use the specific ResteasyClientBuilder implementation directly
-        // This ResteasyClientBuilderImpl has the .connectionPoolSize() method
-        // and its .build() method returns an org.jboss.resteasy.client.jaxrs.ResteasyClient
         ResteasyClient resteasyClient = new ResteasyClientBuilderImpl()
                 .register(jacksonProvider)
-                .connectionPoolSize(20) // This method should now be found
+                .connectionPoolSize(20)
                 .build();
 
         return KeycloakBuilder.builder()
@@ -49,7 +45,7 @@ public class KeycloakConfig {
                 .grantType("client_credentials")
                 .clientId(clientId)
                 .clientSecret(clientSecret)
-                .resteasyClient(resteasyClient) // Provide the ResteasyClient instance
+                .resteasyClient(resteasyClient)
                 .build();
     }
 }
