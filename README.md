@@ -381,3 +381,9 @@ Enable the following options:
 
 ---
 
+## Route53 Configuration
+
+![image](https://github.com/user-attachments/assets/db9ae9be-3baf-4710-bd9d-9f67af507fba)
+
+
+---
