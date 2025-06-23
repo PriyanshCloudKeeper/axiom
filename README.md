@@ -383,10 +383,3 @@ Enable the following options:
 2.  Verify the users and groups in Keycloak
 
 ---
-
-## Route53 Configuration
-
-![image](https://github.com/user-attachments/assets/db9ae9be-3baf-4710-bd9d-9f67af507fba)
-
-
----
