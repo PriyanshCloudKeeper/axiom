@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  mariadb:
+    image: mariadb:latest
+    container_name: myapp-mariadb
+    restart: always
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-toor}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-keycloak}
+      MARIADB_USER: ${MARIADB_USER:-keycloak}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-keycloak}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1.4
+    container_name: myapp-keycloak
+    restart: always
+    environment:
+      KC_DB: mariadb
+      KC_DB_URL_HOST: mariadb
+      KC_DB_DATABASE: ${MARIADB_DATABASE:-keycloak}
+      KC_DB_USERNAME: ${MARIADB_USER:-keycloak}
+      KC_DB_PASSWORD: ${MARIADB_PASSWORD:-keycloak}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HOSTNAME_URL: ${KC_HOSTNAME_URL:-https://keycloak.cloudkeeperbootcamptrainee.space}
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HOSTNAME_STRICT: "false"
+      KEYCLOAK_LOGLEVEL: INFO
+    ports:
+      - "${KEYCLOAK_HOST_HTTP_PORT:-8081}:8080"
+    networks:
+      - app-network
+    depends_on:
+      - mariadb
+    command: start
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  scim-bridge:
+    build:
+      context: ./scim-keycloak-bridge
+      dockerfile: Dockerfile
+    container_name: myapp-scim-bridge
+    restart: always
+    ports:
+      - "${SCIM_BRIDGE_HOST_PORT:-8082}:8080"
+    environment:
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: "${KC_HOSTNAME_URL:-https://keycloak.cloudkeeperbootcamptrainee.space}/realms/${KEYCLOAK_BRIDGE_SECURED_BY_REALM:-master}"
+      KEYCLOAK_SERVER_URL: "http://keycloak:8080"
+      KEYCLOAK_REALM: "${KEYCLOAK_ADMIN_CLIENT_REALM:-master}"
+      KEYCLOAK_CLIENT_ID: "${KEYCLOAK_ADMIN_CLIENT_ID:-scim-bridge-client}"
+      KEYCLOAK_CLIENT_SECRET: "${KEYCLOAK_ADMIN_CLIENT_SECRET}"
+      KEYCLOAK_TARGET_REALM: "${KEYCLOAK_PROVISIONING_TARGET_REALM:-master}"
+      SCIM_BASE_URL: "${SCIM_BRIDGE_EXTERNAL_URL:-http://localhost:8082}"
+    networks:
+      - app-network
+    depends_on:
+      - keycloak
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  mariadb_data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge
