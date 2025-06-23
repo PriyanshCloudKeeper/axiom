@@ -38,6 +38,9 @@ These instructions will guide you through setting up the complete environment on
 -   A Linux server (Ubuntu 22.04 LTS is recommended).
 -   Two registered domain names (e.g., `keycloak.yourdomain.com` and `scim.yourdomain.com`).
 -   DNS `A` records for both domains pointing to your server's public IP address.
+
+![image](https://github.com/user-attachments/assets/db9ae9be-3baf-4710-bd9d-9f67af507fba)
+
 -   **Docker** and **Docker Compose** installed.
     ```bash
     # Install Docker
